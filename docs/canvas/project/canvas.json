@@ -80,7 +80,7 @@
       "x": 2600,
       "y": 480,
       "w": 320,
-      "text": "Should a project's .qq/ folder be committed with it, or gitignored?",
+      "text": "Keep ctrl+q as an instant quit, or only ctrl+d twice?",
       "fill": "orange"
     }
   },

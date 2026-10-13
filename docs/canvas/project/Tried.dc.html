@@ -17,7 +17,7 @@ a{color:#3446C4}a:hover{color:#232F8A}
 <div style="width: 1200px; height: 760px; box-sizing: border-box; padding: 40px 48px; background: #F2F3EF; color: #181B20; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column; gap: 20px">
 <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 24px">
 <h1 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 44px; font-weight: 600; line-height: 1.05">What we've tried</h1>
-<span style="font-size: 15px; color: #5A606B">The TUI, four ways, all on 13 Oct 2026</span>
+<span style="font-size: 15px; color: #5A606B">The TUI, four ways, all on 13 Oct 2026. Out as 0.1.0 the same evening.</span>
 </div>
 <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; flex-grow: 1; min-height: 0">
 
@@ -78,7 +78,7 @@ a{color:#3446C4}a:hover{color:#232F8A}
 <h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 21px; font-weight: 600">An outliner in two panes</h2>
 </div>
 <div style="height: 150px; border-radius: 8px; overflow: hidden; background: #1C2027; display: flex; align-items: center; justify-content: center">
-<img src="/_blob/85d30a10451a031949d775d5c031e88b" alt="The outline on the left and the selected item's whole text on the right" style="width: 100%; height: 100%; object-fit: contain; display: block">
+<img src="/_blob/ccc7a13fcfa105e3981d568dbd63f263" alt="The outline on the left and the selected item's whole text on the right" style="width: 100%; height: 100%; object-fit: contain; display: block">
 </div>
 <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.45; color: #3A3F48">
 <li>Items, not questions and answers; a first line and a body, like a commit</li>
@@ -90,26 +90,30 @@ a{color:#3446C4}a:hover{color:#232F8A}
 </div>
 <div style="display: flex; flex-direction: column; gap: 10px">
 <span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">Since the two panes</span>
-<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px">
 <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
-<b style="font-size: 14px; font-weight: 500">Arrow keys</b>
-<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">← folds or goes to the parent. → unfolds, or edits: the editor is the pane to the right.</span>
+<b style="font-size: 14px; font-weight: 500">Arrows and folding</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">→ edits and ← goes to the parent. <span style="font-family: 'IBM Plex Mono', Menlo, monospace">tab</span> folds, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">shift+tab</span> folds everything, as in org-mode.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
+<b style="font-size: 14px; font-weight: 500">Moving</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48"><span style="font-family: 'IBM Plex Mono', Menlo, monospace">m</span> picks an item up; shift+arrows nudge it with no mode. A run of moves is one undo.</span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
 <b style="font-size: 14px; font-weight: 500">The palette</b>
-<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">ctrl+p, vim-style: <span style="font-family: 'IBM Plex Mono', Menlo, monospace">/find</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">//everywhere</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">:34</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">/old/new/gi</span>.</span>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">ctrl+p, vim-style: <span style="font-family: 'IBM Plex Mono', Menlo, monospace">/find</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">//everywhere</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">:34</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">:34:12</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">/old/new/gi</span>.</span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
-<b style="font-size: 14px; font-weight: 500">Cascading ticks</b>
-<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">A parent is ticked once all its boxes are, and shows <span style="font-family: 'IBM Plex Mono', Menlo, monospace">[-]</span> while only some are.</span>
+<b style="font-size: 14px; font-weight: 500">Ticks</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">Boxes cascade up and down; partly done shows <span style="font-family: 'IBM Plex Mono', Menlo, monospace">[-]</span>. New items get a box.</span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
-<b style="font-size: 14px; font-weight: 500">Clickable references</b>
-<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">Click a <span style="font-family: 'IBM Plex Mono', Menlo, monospace">file:line</span> in the outline and it opens in VS Code.</span>
+<b style="font-size: 14px; font-weight: 500">The editor</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">Numbered lines, a bold first line, markdown and fenced code in colour. No help text.</span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
-<b style="font-size: 14px; font-weight: 500">No “Done” label</b>
-<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">The editor shows just the text. The outline's <span style="font-family: 'IBM Plex Mono', Menlo, monospace">[x]</span> already says it's done.</span>
+<b style="font-size: 14px; font-weight: 500">Quicker hands</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48"><span style="font-family: 'IBM Plex Mono', Menlo, monospace">w a s d</span> as the arrows, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">ctrl+d</span> twice to quit, and a click on a <span style="font-family: 'IBM Plex Mono', Menlo, monospace">file:line</span> opens it.</span>
 </div>
 </div>
 </div>

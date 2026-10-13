@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The palette</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3446C4}a:hover{color:#232F8A}
+</style>
+</helmet>
+<div style="width: 1200px; height: 760px; box-sizing: border-box; padding: 48px 56px; background: #F2F3EF; color: #181B20; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column; gap: 26px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 44px; font-weight: 600; line-height: 1.05">The palette</h1>
+<p style="margin: 0; font-size: 17px; line-height: 1.5; color: #3A3F48; max-width: 52em">VS Code's quick open with vim's command line in it. <b style="font-weight: 500; color: #181B20">ctrl+p</b> from either pane, or <b style="font-weight: 500; color: #181B20">/</b> and <b style="font-weight: 500; color: #181B20">:</b> in the outline, which open it with that already typed. What it works on depends on the pane you opened it from.</p>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 500px; gap: 40px; flex-grow: 1; min-height: 0">
+<div style="display: flex; flex-direction: column; gap: 18px; min-width: 0">
+<div style="background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px; overflow: hidden">
+<div style="display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr)">
+<div style="padding: 10px 12px; background: #FBFBF8; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; color: #5A606B">Type</div>
+<div style="padding: 10px 12px; background: #FBFBF8; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; color: #5A606B">In the outline</div>
+<div style="padding: 10px 12px; background: #FBFBF8; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; color: #5A606B">In the editor</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 14px; color: {{accent}}; white-space: nowrap">/words</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">find items</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">find lines in this item</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 14px; color: {{accent}}; white-space: nowrap">//words</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">find items</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">find items</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 14px; color: {{accent}}; white-space: nowrap">:34</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">go to item 34</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">go to line 34</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 14px; color: {{accent}}; white-space: nowrap">/old/new/</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">replace in every item</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">replace in this item</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 14px; color: {{accent}}; white-space: nowrap">//old/new/</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">replace in every item</div>
+<div style="padding: 9px 12px; border-top: 1px solid #E3E5DD; font-size: 14px; line-height: 1.4; color: #3A3F48">replace in every item</div>
+</div>
+</div>
+<ul style="margin: 0; padding-left: 18px; font-size: 15px; line-height: 1.55; color: #3A3F48">
+<li>A replace needs the closing slash, so <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">/src/app.py</span> is still a search for that path.</li>
+<li>Without flags it replaces the first match on each line. <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">g</span> replaces every match and <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">i</span> ignores case: <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">/old/new/gi</span>.</li>
+<li>The text is literal, not a pattern, so dots and brackets in paths behave.</li>
+<li>Plain words with no slash find items, wherever you are. Items are numbered in a dim gutter, in file order.</li>
+</ul>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">A replace, before enter</span>
+<div style="border-radius: 8px; overflow: hidden; background: #121417">
+<img src="/_blob/b757953da2ee7953739885e8ef63d4b5" alt="The palette over the outline with /June/July/ typed: enter replaces in 1 item (u undoes it), and the old first line struck through with the new one after it" style="width: 100%; display: block">
+</div>
+<ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.55; color: #3A3F48">
+<li>Before enter, it lists the items that will change, old first line struck through and the new one after it.</li>
+<li>If nothing matches, enter beeps and the palette stays open.</li>
+<li><b style="font-weight: 500; color: #181B20">u</b> undoes a whole replace in one step.</li>
+<li>Cmd+P can't reach a terminal app, so the key is ctrl+p. iTerm2 and Ghostty can map one to the other.</li>
+</ul>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#3446C4","options":["#3446C4","#1E7558","#B4512A"]},"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#3446C4' };
+}
+}
+</script>
+</body>
+</html>

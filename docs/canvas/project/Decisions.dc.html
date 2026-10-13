@@ -14,43 +14,59 @@ body{margin:0}
 a{color:#3446C4}a:hover{color:#232F8A}
 </style>
 </helmet>
-<div style="width: 1200px; height: 760px; box-sizing: border-box; padding: 56px 64px; background: #F2F3EF; color: #181B20; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column; gap: 28px">
+<div style="width: 1200px; height: 760px; box-sizing: border-box; padding: 44px 64px; background: #F2F3EF; color: #181B20; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column; gap: 20px">
 <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 24px">
 <h1 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 44px; font-weight: 600; line-height: 1.05">Decisions so far</h1>
 <span style="font-size: 15px; color: #5A606B">Full reasoning in <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">docs/design.md</span></span>
 </div>
 <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px">
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid #D5D8CF">
-<h2 style="margin: 0; font-size: 18px; font-weight: 500">Named so the initials spell the command</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3A3F48">Question Queue, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">qq</span>. Published as question-queue, because quarry and qq are taken on PyPI.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Named so the initials spell the command</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">Question Queue, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">qq</span>. Published as question-queue, because quarry and qq are taken on PyPI.</p>
 </div>
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid #D5D8CF">
-<h2 style="margin: 0; font-size: 18px; font-weight: 500">Your notes come back untouched</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3A3F48">Questions you haven't changed are written back exactly as read. Unrecognised lines keep their place.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">An outliner, not questions and answers</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">Every list item is an item. A question is just one ending in ?, and its answer is an item under it. Files from the first version still open.</p>
 </div>
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid #D5D8CF">
-<h2 style="margin: 0; font-size: 18px; font-weight: 500">Esc leaves the answer editor</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3A3F48">Otherwise n, r and u would be typed into answers. Ctrl keys work in both modes.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Each item is a subject and a body</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">The first line is what the outline shows; the indented lines under it are the rest, like a commit message.</p>
 </div>
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid #D5D8CF">
-<h2 style="margin: 0; font-size: 18px; font-weight: 500">IDs are saved as soon as a file opens</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3A3F48">So another tool reading the file sees the same IDs that qq uses.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Two panes keep moving and typing apart</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">Outline keys are commands and never type; the editor is where you type. Replaced the one-mode ctrl-key design.</p>
 </div>
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid #D5D8CF">
-<h2 style="margin: 0; font-size: 18px; font-weight: 500">Next open returns to the parent</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3A3F48">Finish the branch, then widen one level at a time. See the board on the left.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Capture first, place later</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">enter adds where you are, n adds at the bottom and puts you back, and m makes moving it afterwards easy.</p>
 </div>
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid #D5D8CF">
-<h2 style="margin: 0; font-size: 18px; font-weight: 500">Never overwrite someone else's edit</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3A3F48">If the file changes on disk, qq reloads. With unsaved edits, it asks whether to reload or keep yours.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Your file comes back untouched</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">Items you haven't changed are written back exactly as read. IDs are added as soon as a file opens, so other tools see the same ones.</p>
 </div>
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid #D5D8CF">
-<h2 style="margin: 0; font-size: 18px; font-weight: 500">Delete takes the whole subtree</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3A3F48">It asks first when the question has children.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Ticks follow the boxes under them</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">Partly done shows [-] but stays [ ] in the file, so it's still plain markdown. A plain item stops the cascade.</p>
 </div>
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid #D5D8CF">
-<h2 style="margin: 0; font-size: 18px; font-weight: 500">Core has no UI code</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3A3F48">Everything works by question ID, so the MCP server and VS Code extension can reuse it as is.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">The palette depends on the pane</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">/ means this item in the editor, // means everywhere. A replace is literal and needs the closing slash.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Undo is a stack of file snapshots</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">Every change, IDs included, up to 200 deep. Reloading after an outside edit clears it.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Never overwrite someone else's edit</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">If the file changes on disk, qq reloads. With unsaved edits, it asks whether to reload or keep yours.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Core has no UI code</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">Everything works by item ID, so the MCP server and VS Code extension can reuse it. next_open, finish the branch then widen, waits there for them.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #D5D8CF">
+<h2 style="margin: 0; font-size: 17px; font-weight: 500">Plain qq finds the nearest .qq folder</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #3A3F48">Like git finds .git. With none, it asks: start one here, or use the global ~/.qq.</p>
 </div>
 </div>
 </div>

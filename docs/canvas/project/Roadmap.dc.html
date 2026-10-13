@@ -19,45 +19,54 @@ a{color:#3446C4}a:hover{color:#232F8A}
 <h1 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 44px; font-weight: 600; line-height: 1.05">Ideas and next steps</h1>
 <span style="font-size: 15px; color: #5A606B">Each new front end builds on <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">questionqueue.core</span></span>
 </div>
-<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px">
-<div style="display: flex; flex-direction: column; gap: 14px; padding: 24px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px; min-width: 0">
 <span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}">Next</span>
-<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 26px; font-weight: 600">MCP server</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3A3F48">Let an LLM drive the tree through tool calls. Wrap DocumentFile and core.ops directly.</p>
-<ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.6; color: #3A3F48">
-<li>One operation per call: load, apply, save</li>
-<li>On ExternalChange, reload and retry rather than force</li>
-<li>next_open and trail as the "what next" and "where am I" tools</li>
-<li>An open qq already reloads on its writes</li>
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 23px; font-weight: 600"><span style="font-family: 'IBM Plex Mono', Menlo, monospace">qq add</span> from the shell</h2>
+<p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #3A3F48">Capture a thought without opening qq. It lands at the bottom, like n.</p>
+<ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.55; color: #3A3F48">
+<li>A VS Code task on a key: <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20; word-break: break-all">qq add "${relativeFile}:${lineNumber}"</span>, with the selected text too</li>
+<li>An open qq reloads and shows it straight away</li>
 </ul>
 </div>
-<div style="display: flex; flex-direction: column; gap: 14px; padding: 24px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px; min-width: 0">
 <span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">Then</span>
-<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 26px; font-weight: 600">VS Code extension</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3A3F48">The same focus and outline views beside the code, on the same file.</p>
-<ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.6; color: #3A3F48">
-<li>Talks to the core over the MCP server, or a small local API</li>
-<li>Has to keep the file format exactly as qq writes it</li>
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 23px; font-weight: 600">MCP server</h2>
+<p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #3A3F48">Let an LLM drive the tree through tool calls, on DocumentFile and core.ops.</p>
+<ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.55; color: #3A3F48">
+<li>One operation per call: load, apply, save</li>
+<li>On ExternalChange, reload and retry</li>
+<li>trail and next_open as "where am I" and "what next"</li>
 </ul>
 </div>
-<div style="display: flex; flex-direction: column; gap: 14px; padding: 24px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px; min-width: 0">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">Then</span>
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 23px; font-weight: 600">VS Code extension</h2>
+<p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #3A3F48">The outline beside the code, on the same file, with capture from a right-click.</p>
+<ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.55; color: #3A3F48">
+<li>Talks to the core through the MCP server or a small local API</li>
+<li>Keeps the file exactly as qq writes it</li>
+</ul>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px; min-width: 0">
 <span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">Later</span>
-<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 26px; font-weight: 600">Remote and phone</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3A3F48">Park a question from anywhere. Answer it later at the desk.</p>
-<ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.6; color: #3A3F48">
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 23px; font-weight: 600">Remote and phone</h2>
+<p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #3A3F48">Park a thought from anywhere; deal with it later at the desk.</p>
+<ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.55; color: #3A3F48">
 <li>Needs sync, which v1 left out on purpose</li>
-<li>Parking is the phone's main job</li>
+<li>Capture is the phone's main job</li>
 </ul>
 </div>
 </div>
 <div style="display: flex; flex-direction: column; gap: 14px">
 <span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">Smaller ideas, not yet scheduled</span>
 <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 20px; font-size: 15px; color: #181B20">
-<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">?</b><span>Rename a question from the TUI</span></div>
-<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">?</b><span>Remember the current question between runs</span></div>
-<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">?</b><span>Configurable keybindings</span></div>
-<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">?</b><span>Search across questions and answers</span></div>
-<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">?</b><span>Undo for moves and deletes</span></div>
+<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">•</b><span>Make references terminal links too, so cmd+click works</span></div>
+<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">•</b><span>Click a reference in the editor pane, not just the outline</span></div>
+<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">•</b><span>Remember folds and the selected item between runs</span></div>
+<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">•</b><span>A key for the next open box (next_open is in core)</span></div>
+<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">•</b><span>Show the trail above a deeply nested item</span></div>
+<div style="display: flex; gap: 10px"><b style="font-family: 'IBM Plex Mono', Menlo, monospace; color: {{accent}}">•</b><span>Configurable keybindings</span></div>
 </div>
 </div>
 </div>

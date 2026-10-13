@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ticks and file references</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3446C4}a:hover{color:#232F8A}
+</style>
+</helmet>
+<div style="width: 1200px; height: 760px; box-sizing: border-box; padding: 44px 56px; background: #F2F3EF; color: #181B20; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 24px">
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 44px; font-weight: 600; line-height: 1.05">Ticks and file references</h1>
+<span style="font-size: 15px; color: #5A606B">As built, 13 Oct 2026</span>
+</div>
+<div style="display: grid; grid-template-columns: 540px minmax(0, 1fr); gap: 40px; flex-grow: 1; min-height: 0">
+
+<div style="display: flex; flex-direction: column; gap: 12px; min-width: 0">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">In the outline</span>
+<div style="border-radius: 8px; overflow: hidden; background: #121417">
+<img src="/_blob/94ecacdd70dc1f2cbffd38affbd855a0" alt="The outline with Book it shown as [-] because one of its two boxes is ticked, and foo/bar/core.py:30 underlined" style="width: 100%; display: block">
+</div>
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B; margin-top: 6px">In the file</span>
+<div style="display: flex; flex-direction: column; background: #1C2027; border-radius: 8px; padding: 14px 18px; font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; line-height: 1.7; color: #D9DCE3">
+<div style="padding-left: 0ch; white-space: pre"><span style="color: #8A90A0">-</span> <b style="color: #8FA0FF">[ ]</b> Book it <span style="color: #6B7182">&lt;!-- q:b0b0 --&gt;</span>  <span style="color: #FFA62B">← shown as [-]</span></div>
+<div style="padding-left: 2ch; white-space: pre"><span style="color: #8A90A0">-</span> <b style="color: #6FD3AE">[x]</b> <span style="color: #9AA0AE">Trains, by the end of March</span> <span style="color: #6B7182">&lt;!-- q:e5f6 --&gt;</span></div>
+<div style="padding-left: 2ch; white-space: pre"><span style="color: #8A90A0">-</span> <b style="color: #8FA0FF">[ ]</b> Somewhere to stay <span style="color: #6B7182">&lt;!-- q:f0f0 --&gt;</span></div>
+<div style="padding-left: 0ch; white-space: pre"><span style="color: #8A90A0">-</span> Parsed in foo/bar/core.py:30 <span style="color: #6B7182">&lt;!-- q:g7h8 --&gt;</span></div>
+</div>
+<p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #5A606B">Partly done stays <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">[ ]</span> in the file, since it isn't done, so the file is still plain GitHub markdown.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 22px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 26px; font-weight: 600">Ticks cascade</h2>
+<ul style="margin: 0; padding-left: 18px; font-size: 15px; line-height: 1.55; color: #3A3F48">
+<li><b style="font-weight: 500; color: #181B20">space</b> ticks or unticks, and everything with a box under it goes the same way. <b style="font-weight: 500; color: #181B20">t</b> adds or removes the box; a plain item gets one when you tick it.</li>
+<li>Up: an item with boxes under it is ticked exactly when all of them are. Untick one and the ticked items above it open again.</li>
+<li>Partly ticked shows <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">[-]</span>. Moving, adding and deleting update both the old place and the new.</li>
+<li>A plain item stops the cascade: boxes under it don't count towards anything above it.</li>
+</ul>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 26px; font-weight: 600">File references</h2>
+<ul style="margin: 0; padding-left: 18px; font-size: 15px; line-height: 1.55; color: #3A3F48">
+<li>A <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">path:line</span> is underlined in the outline. Click it, or press <b style="font-weight: 500; color: #181B20">o</b> (<b style="font-weight: 500; color: #181B20">ctrl+o</b> in the editor, for the cursor's line), and it opens at that line.</li>
+<li>Paths are relative to the folder that holds <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">.qq</span>.</li>
+<li>The editor is <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">$QQ_EDITOR</span>, else <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">$VISUAL</span>, else <span style="font-family: 'IBM Plex Mono', Menlo, monospace; color: #181B20">$EDITOR</span>, else VS Code if it's installed, else vi. VS Code and the like open alongside; a terminal editor takes over until you quit it.</li>
+</ul>
+<div style="display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; margin-top: 6px; padding: 14px 16px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px; font-size: 13px; line-height: 1.5">
+<span style="color: #5A606B">code, cursor, windsurf</span><span style="font-family: 'IBM Plex Mono', Menlo, monospace">code -g foo/bar/core.py:30</span>
+<span style="color: #5A606B">subl, zed, hx</span><span style="font-family: 'IBM Plex Mono', Menlo, monospace">subl foo/bar/core.py:30</span>
+<span style="color: #5A606B">vim and the rest</span><span style="font-family: 'IBM Plex Mono', Menlo, monospace">vim +30 foo/bar/core.py</span>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

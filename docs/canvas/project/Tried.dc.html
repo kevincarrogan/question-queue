@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What we've tried</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3446C4}a:hover{color:#232F8A}
+</style>
+</helmet>
+<div style="width: 1200px; height: 760px; box-sizing: border-box; padding: 40px 48px; background: #F2F3EF; color: #181B20; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 24px">
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 44px; font-weight: 600; line-height: 1.05">What we've tried</h1>
+<span style="font-size: 15px; color: #5A606B">The TUI, four ways, all on 13 Oct 2026</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; flex-grow: 1; min-height: 0">
+
+<div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">01 · First build</span>
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 21px; font-weight: 600">Two views and a mode switch</h2>
+</div>
+<div style="height: 150px; box-sizing: border-box; background: #1C2027; border-radius: 8px; padding: 10px 12px; font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 10.5px; line-height: 1.55; color: #D9DCE3; display: flex; flex-direction: column; gap: 6px; overflow: hidden">
+<div style="white-space: pre; color: #8A90A0">Where should we go in June?</div>
+<div style="white-space: pre; background: #262B33; border-left: 3px solid #FFA62B; padding: 4px 8px; font-weight: 500">Which stretch of coast?</div>
+<div style="flex-grow: 1; border: 1px solid #3A404B; border-radius: 6px; padding: 4px 8px; position: relative; color: #8A90A0">
+<div style="white-space: pre">The north coast.</div>
+<div style="position: absolute; right: 8px; bottom: 2px; font-size: 10px; color: #6B7182">esc for commands</div>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 10px; color: #8A90A0"><span>n N r park · u up · q quit</span><span style="color: #FFA62B">tab: outline</span></div>
+</div>
+<ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.45; color: #3A3F48">
+<li>A focus view for one question, and an outline view on tab for arranging</li>
+<li>Single-letter keys, so esc left the answer to make them commands</li>
+</ul>
+<p style="margin: 0; margin-top: auto; padding-top: 10px; border-top: 1px solid #D5D8CF; font-size: 13.5px; line-height: 1.45; color: #181B20"><b style="font-weight: 500">Why we moved on:</b> too much to learn before asking a single question.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">02 · Cut down</span>
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 21px; font-weight: 600">Three keys, one mode</h2>
+</div>
+<div style="height: 150px; border-radius: 8px; overflow: hidden; background: #1C2027; display: flex; align-items: center; justify-content: center">
+<img src="/_blob/edbf0609bde1c0dd1311039276a3eb2a" alt="The cut-down TUI: one question, its answer box, and a key bar" style="width: 100%; height: 100%; object-fit: contain; display: block">
+</div>
+<ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.45; color: #3A3F48">
+<li>Always typing into the answer; ctrl+n ask, ctrl+d done and next, ctrl+q quit</li>
+<li>A guide on the empty screen</li>
+</ul>
+<p style="margin: 0; margin-top: auto; padding-top: 10px; border-top: 1px solid #D5D8CF; font-size: 13.5px; line-height: 1.45; color: #181B20"><b style="font-weight: 500">Why we moved on:</b> easy to learn, but one question at a time hid the shape of the file.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">03 · Like the file</span>
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 21px; font-weight: 600">Reads like the markdown</h2>
+</div>
+<div style="height: 150px; border-radius: 8px; overflow: hidden; background: #1C2027; display: flex; align-items: center; justify-content: center">
+<img src="/_blob/5442ad0ff325f6b5ce13d05840a9d1df" alt="The whole file drawn as markdown, with a new question being typed in place" style="width: 100%; height: 100%; object-fit: contain; display: block">
+</div>
+<ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.45; color: #3A3F48">
+<li>The whole file drawn as markdown, IDs hidden, answers typed in place</li>
+<li>Then to-dos (<span style="font-family: 'IBM Plex Mono', Menlo, monospace">[ ]</span>) and file references on top</li>
+</ul>
+<p style="margin: 0; margin-top: auto; padding-top: 10px; border-top: 1px solid #D5D8CF; font-size: 13.5px; line-height: 1.45; color: #181B20"><b style="font-weight: 500">Why we moved on:</b> it was still questions and answers, and most of what goes in isn't either.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: {{accent}}">04 · Now</span>
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 21px; font-weight: 600">An outliner in two panes</h2>
+</div>
+<div style="height: 150px; border-radius: 8px; overflow: hidden; background: #1C2027; display: flex; align-items: center; justify-content: center">
+<img src="/_blob/85d30a10451a031949d775d5c031e88b" alt="The outline on the left and the selected item's whole text on the right" style="width: 100%; height: 100%; object-fit: contain; display: block">
+</div>
+<ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.45; color: #3A3F48">
+<li>Items, not questions and answers; a first line and a body, like a commit</li>
+<li>enter adds here, n at the bottom, m picks one up to carry it</li>
+</ul>
+<p style="margin: 0; margin-top: auto; padding-top: 10px; border-top: 1px solid #D5D8CF; font-size: 13.5px; line-height: 1.45; color: #181B20"><b style="font-weight: 500">Why it holds:</b> moving and typing never share a key, and the pane with focus says which you're doing.</p>
+</div>
+
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">Since the two panes</span>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
+<b style="font-size: 14px; font-weight: 500">Arrow keys</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">← folds or goes to the parent. → unfolds, or edits: the editor is the pane to the right.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
+<b style="font-size: 14px; font-weight: 500">The palette</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">ctrl+p, vim-style: <span style="font-family: 'IBM Plex Mono', Menlo, monospace">/find</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">//everywhere</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">:34</span>, <span style="font-family: 'IBM Plex Mono', Menlo, monospace">/old/new/gi</span>.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
+<b style="font-size: 14px; font-weight: 500">Cascading ticks</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">A parent is ticked once all its boxes are, and shows <span style="font-family: 'IBM Plex Mono', Menlo, monospace">[-]</span> while only some are.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px">
+<b style="font-size: 14px; font-weight: 500">Clickable references</b>
+<span style="font-size: 13px; line-height: 1.45; color: #3A3F48">Click a <span style="font-family: 'IBM Plex Mono', Menlo, monospace">file:line</span> in the outline and it opens in VS Code.</span>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#3446C4","options":["#3446C4","#1E7558","#B4512A"]},"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#3446C4' };
+}
+}
+</script>
+</body>
+</html>

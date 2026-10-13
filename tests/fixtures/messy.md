@@ -1,8 +1,8 @@
 ---
-title: Essay notes
+title: Trip notes
 ---
 
-# Essay notes
+# Trip notes
 
 Some prose before anything.   
 It has trailing spaces on the line above, and a [link](https://example.com).

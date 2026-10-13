@@ -2,62 +2,82 @@ Screen {
     background: $background;
 }
 
-ContentSwitcher {
+#where {
+    color: $text-muted;
+    padding: 0 1;
+    height: 1;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#keys {
+    dock: bottom;
+    height: 1;
+    padding: 0 1;
+    background: $panel;
+    color: $text-muted;
+}
+
+#panes {
     height: 1fr;
 }
 
-FocusView {
-    padding: 1 4;
-    height: 1fr;
+.-narrow #panes {
+    layout: vertical;
 }
 
-#trail {
-    color: $text-muted;
-    height: auto;
-    margin-bottom: 1;
-}
+/* Whichever pane has the focus gets the bright border: that's the mode. */
 
-#question {
-    text-style: bold;
-    color: $text;
-    background: $boost;
-    border-left: thick $accent;
-    padding: 1 2;
-    height: auto;
-    margin-bottom: 1;
-}
-
-#question.answered {
-    border-left: thick $success;
-    color: $text-muted;
-}
-
-#question.empty {
-    text-style: italic;
-    border-left: thick $panel;
-    color: $text-muted;
-}
-
-#answer {
+#outline, #editor {
+    width: 1fr;
     height: 1fr;
     border: round $panel;
     padding: 0 1;
-}
-
-#answer:focus {
-    border: round $accent;
-}
-
-#answer > .text-area--cursor-line {
     background: transparent;
 }
 
-#outline {
-    padding: 1 2;
-    height: 1fr;
+#outline:focus, #editor:focus-within {
+    border: round $accent;
 }
 
-ParkModal, ChoiceModal {
+#outline > .option-list--option-highlighted {
+    background: $accent 25%;
+    text-style: bold;
+}
+
+#outline:blur > .option-list--option-highlighted {
+    background: $accent 12%;
+}
+
+#outline > .option-list--option-disabled {
+    color: $text;
+}
+
+#outline.-moving > .option-list--option-highlighted {
+    background: $primary 60%;
+}
+
+#editor-head {
+    color: $text-muted;
+    height: auto;
+}
+
+#text {
+    height: 1fr;
+    border: none;
+    background: transparent;
+    padding: 0;
+}
+
+#text > .text-area--cursor-line {
+    background: transparent;
+}
+
+#text > .text-area--placeholder {
+    color: $text-muted;
+}
+
+ChoiceModal, HelpModal {
     align: center middle;
     background: $background 60%;
 }
@@ -71,11 +91,46 @@ ParkModal, ChoiceModal {
     background: $surface;
 }
 
-.dialog Input {
-    margin-top: 1;
-}
-
 .dialog .choices {
     margin-top: 1;
     color: $text-muted;
+}
+
+PaletteModal {
+    align: center top;
+    background: $background 50%;
+}
+
+.palette {
+    width: 80;
+    max-width: 95%;
+    height: auto;
+    max-height: 70%;
+    margin-top: 2;
+    border: round $accent;
+    background: $surface;
+    padding: 0 1;
+}
+
+#palette-input {
+    border: none;
+    height: 1;
+    padding: 0;
+    background: transparent;
+}
+
+#palette-hint {
+    color: $text-muted;
+    height: auto;
+}
+
+#palette-results {
+    height: auto;
+    max-height: 20;
+    border: none;
+    background: transparent;
+}
+
+.help {
+    width: 84;
 }

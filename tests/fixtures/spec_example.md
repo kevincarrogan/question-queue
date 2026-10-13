@@ -1,6 +1,6 @@
-- ? How should the essay open? <!-- q:a1b2 -->
-  > Start with the story, it's concrete.
-  - ? Which anecdote exactly? <!-- q:c3d4 -->
-  - ?x Does it need background first? <!-- q:e5f6 -->
-    > No, link out instead.
-- ? Who's the audience? <!-- q:g7h8 -->
+- ? Where should we go in June? <!-- q:a1b2 -->
+  > Somewhere by the sea, with good walks.
+  - ? Which stretch of coast? <!-- q:c3d4 -->
+  - ?x Do we need to book trains early? <!-- q:e5f6 -->
+    > Yes, by the end of March.
+- ? Who's coming? <!-- q:g7h8 -->

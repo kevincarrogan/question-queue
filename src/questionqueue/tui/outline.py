@@ -1,108 +1,133 @@
+"""The outline: every item by its first line. For moving around and
+arranging; keys here never type."""
+
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from rich.text import Text
+from textual import events
 from textual.binding import Binding
 from textual.message import Message
-from textual.widgets import Tree
-from textual.widgets.tree import TreeNode
+from textual.widgets import OptionList
+from textual.widgets.option_list import Option, OptionDoesNotExist
 
-from ..core import Document, Question
+from ..core import Document
+from .render import MUTED, draw_line, gutter_width, outline
+
+# The option for an item still being written, before it's in the document.
+NEW_ID = "--new--"
+
+GUIDE = """\
+Nothing here yet. Press enter to write your first item.
+
+This side is the outline: you move around it and arrange it, and keys
+are commands. The other side is where you write; → or e goes there,
+and esc comes back.
+
+enter adds an item where you are, n adds one at the bottom, m picks one
+up to move it, and u undoes. ← folds, and → unfolds."""
 
 
-class OutlineTree(Tree[str]):
-    """The whole question tree. Node data is the question ID."""
-
+class OutlineList(OptionList):
     BINDINGS = [
-        Binding("enter", "open_question", show=False),
         Binding("j", "cursor_down", show=False),
         Binding("k", "cursor_up", show=False),
-        Binding("d", "request('delete')", show=False),
-        Binding("K", "request('move_up')", show=False),
-        Binding("J", "request('move_down')", show=False),
-        Binding("greater_than_sign", "request('indent')", show=False),
-        Binding("less_than_sign", "request('outdent')", show=False),
+        Binding("left", "request('left')", show=False),
+        Binding("right", "request('right')", show=False),
+        Binding("shift+up", "request('nudge_up')", show=False),
+        Binding("shift+down", "request('nudge_down')", show=False),
+        Binding("tab,shift+right", "request('indent')", show=False),
+        Binding("shift+tab,shift+left", "request('outdent')", show=False),
+        Binding("enter", "request('new_here')", show=False),
+        # alt+enter reaches us everywhere (see keys.py); shift+enter only
+        # where the terminal reports it as its own key.
+        Binding("alt+enter,shift+enter", "request('new_above')", show=False),
+        Binding("n", "request('new_at_bottom')", show=False),
+        Binding("e,i", "request('edit')", show=False),
+        Binding("m", "request('move')", show=False),
+        Binding("space", "request('tick')", show=False),
+        Binding("t", "request('toggle_box')", show=False),
+        Binding("x", "request('delete')", show=False),
+        Binding("u", "request('undo')", show=False),
+        Binding("slash", "request('find')", show=False),
+        Binding("colon", "request('goto')", show=False),
+        Binding("question_mark", "request('help')", show=False),
+        Binding("o", "request('open_ref')", show=False),
+        Binding("q", "request('quit')", show=False),
+        Binding("escape", "request('escape')", show=False),
     ]
 
     class Request(Message):
-        """Ask the app to do something to the highlighted question."""
+        """An outline key was pressed; the app does the work."""
 
-        def __init__(self, action: str, question_id: str) -> None:
+        def __init__(self, action: str) -> None:
             super().__init__()
             self.action = action
-            self.question_id = question_id
 
-    def __init__(self) -> None:
-        super().__init__("questions", id="outline")
-        self.show_root = False
-        self._by_id: dict[str, TreeNode[str]] = {}
-        # Expanded/collapsed choices the user made, so a rebuild keeps them.
-        self._expanded: dict[str, bool] = {}
+    class OpenRef(Message):
+        """A file:line in the outline was clicked."""
 
-    @property
-    def highlighted_id(self) -> str | None:
-        node = self.cursor_node
-        return node.data if node is not None else None
-
-    def rebuild(
-        self, doc: Document, current_id: str | None, cursor_id: str | None
-    ) -> None:
-        self.clear()
-        self._by_id.clear()
-        for question in doc.children:
-            self._add(self.root, question, current_id)
-        target = self._by_id.get(cursor_id or "") or self._by_id.get(current_id or "")
-        if target is not None:
-            self.reveal(target)
-
-    def reveal(self, node: TreeNode[str]) -> None:
-        parent = node.parent
-        while parent is not None and parent is not self.root:
-            parent.expand()
-            parent = parent.parent
-        self.call_after_refresh(self.move_cursor, node)
-
-    def _add(
-        self, parent: TreeNode[str], question: Question, current_id: str | None
-    ) -> None:
-        label = self._label(question, question.id == current_id)
-        if question.children:
-            node = parent.add(
-                label, data=question.id, expand=self._should_expand(question)
-            )
-            for child in question.children:
-                self._add(node, child, current_id)
-        else:
-            node = parent.add_leaf(label, data=question.id)
-        self._by_id[question.id] = node
-
-    def _should_expand(self, question: Question) -> bool:
-        if question.id in self._expanded:
-            return self._expanded[question.id]
-        # Answered branches start collapsed, unless something under them is still open.
-        return question.is_open or any(q.is_open for q in question.descendants())
-
-    @staticmethod
-    def _label(question: Question, is_current: bool) -> Text:
-        mark = (
-            Text("? ", style="bold") if question.is_open else Text("✓ ", style="green")
-        )
-        text = Text(question.text, style="dim" if not question.is_open else "")
-        if is_current:
-            text.stylize("bold underline")
-        return Text.assemble(mark, text)
-
-    def on_tree_node_expanded(self, event: Tree.NodeExpanded[str]) -> None:
-        if event.node.data is not None:
-            self._expanded[event.node.data] = True
-
-    def on_tree_node_collapsed(self, event: Tree.NodeCollapsed[str]) -> None:
-        if event.node.data is not None:
-            self._expanded[event.node.data] = False
-
-    def action_open_question(self) -> None:
-        self.action_request("open")
+        def __init__(self, ref: str) -> None:
+            super().__init__()
+            self.ref = ref
 
     def action_request(self, action: str) -> None:
-        question_id = self.highlighted_id
-        if question_id is not None:
-            self.post_message(self.Request(action, question_id))
+        self.post_message(self.Request(action))
+
+    async def _on_click(self, event: events.Click) -> None:
+        # OptionList selects the row as well, after this.
+        ref = event.style.meta.get("ref")
+        if ref is not None:
+            self.post_message(self.OpenRef(ref))
+
+    # While an item is picked up, up and down carry it, not the cursor.
+
+    def action_cursor_up(self) -> None:
+        if self.has_class("-moving"):
+            self.action_request("nudge_up")
+        else:
+            super().action_cursor_up()
+
+    def action_cursor_down(self) -> None:
+        if self.has_class("-moving"):
+            self.action_request("nudge_down")
+        else:
+            super().action_cursor_down()
+
+    def show_doc(
+        self,
+        doc: Document,
+        selected_id: str | None,
+        *,
+        folded: Collection[str] = (),
+        new_row: tuple[int, int] | None = None,
+    ) -> None:
+        """Draw the items showing. `new_row` is (position, depth) for a blank
+        row where an item being written will go; it's selected while it's there."""
+        options = [Option(text, id=item_id) for text, item_id in outline(doc, folded)]
+        if new_row is not None:
+            position, depth = new_row
+            blank = draw_line(depth, "", width=gutter_width(doc))
+            options.insert(position, Option(blank, id=NEW_ID))
+            selected_id = NEW_ID
+        if not options:
+            options = [Option(Text(GUIDE, style=MUTED), disabled=True)]
+        with self.prevent(OptionList.OptionHighlighted):
+            self.set_options(options)
+            if selected_id is not None and self.has(selected_id):
+                self.highlighted = self.get_option_index(selected_id)
+        if self.highlighted is not None:
+            self.scroll_to_highlight()
+
+    def has(self, option_id: str) -> bool:
+        try:
+            self.get_option_index(option_id)
+        except OptionDoesNotExist:
+            return False
+        return True
+
+    def redraw_line(self, option_id: str, text: Text) -> None:
+        """Replace one line, e.g. while its item is being typed."""
+        if self.has(option_id):
+            self.replace_option_prompt(option_id, text)

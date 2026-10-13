@@ -1,17 +1,21 @@
-# Question Queue: v1 design
+# Question Queue: design
 
-This is the record of how v1 works and why, written for whoever builds the
-next front end (the MCP server, the VS Code extension, remote access). The
-README covers how to use it; this covers how it fits together.
+This is the record of how Question Queue works and why, written for whoever
+builds the next front end (the MCP server, the VS Code extension, remote
+access). The README covers how to use it; this covers how it fits together.
 
 ## What it is
 
-A keyboard-driven tool for thinking through a problem by writing yourself
-questions and answering them in your own voice. Questions nest under the
-questions that raised them, which records the trail of ideas. You work on one
-question at a time and park new ones as they come up.
+An outliner for thinking things through. Questions, ideas and to-dos go into
+a nested list as they come up, under whatever raised them, so you can get them
+out of your head without losing your place in what you're working on.
 
-v1 is a Textual TUI over a single markdown file. There is no database: the
+Everything is an item: a line of text, with more text under it if it needs
+it, and items nested under items. A question is just an item that ends in a
+question mark, and its answer is an item underneath it (or the rest of its
+text). Nothing in the tool treats questions specially.
+
+It's a Textual TUI over a single markdown file. There is no database: the
 file is the only source of truth, and it has to stay pleasant to read and edit
 by hand.
 
@@ -23,39 +27,46 @@ by hand.
 | PyPI distribution | `question-queue` |
 | Import package | `questionqueue` |
 | Command | `qq` |
+| Queue file | `.qq/questions.md` |
 
 The initials spell the command. `quarry` (the first working name) and `qq`
 are taken on PyPI by unrelated projects; `interrobang` was considered and
-dropped because it doesn't match `qq`.
+dropped because it doesn't match `qq`. The names come from the first version,
+which was built around questions and answers; they've stayed.
 
 ## Layout
 
 ```
 src/questionqueue/
-  cli.py            qq entry point
+  cli.py            qq entry point and its options
   core/             no UI imports; what every front end builds on
-    model.py        Question, RawLine, Document
+    model.py        Item, RawLine, Document
     parser.py       markdown → Document
     serialise.py    Document → markdown
     ops.py          tree operations
-    store.py        load, atomic save, conflict detection, watching
+    store.py        load, atomic save, conflict detection, watching, .qq lookup
+    refs.py         file references like foo/bar/core.py:30
     ids.py          short ID generation
-    errors.py       QuestionNotFound, InvalidMove, ExternalChange
+    errors.py       ItemNotFound, InvalidMove, ExternalChange
   tui/
-    app.py          QQApp: bindings, autosave, reload handling
-    focus.py        focus view and the answer editor
-    outline.py      outline view
-    modals.py       park input and y/n-style choices
+    app.py          QQApp: modes, keys, undo, folding, autosave, reloads
+    outline.py      the outline pane (subjects only)
+    editor.py       the editor pane (the whole text)
+    render.py       how an item is drawn in the outline
+    modals.py       single-key choices, the palette, the key list
+    keys.py         alt+enter support
     app.tcss
 tests/
-  core/             round-trip, ops, next_open, store
-  tui/              pilot tests against the real app
-  fixtures/         messy real-world markdown
+  core/             format, ops, step, replace, ticks, next_open, store,
+                    .qq lookup, references
+  tui/              pilot tests against the real app, key parsing
+  fixtures/         messy real-world markdown, and files in the old format
 ```
 
-`core` is the boundary that matters. The TUI only ever calls `core.ops`
-and `DocumentFile`, and every operation takes and returns question IDs, never
-positions in the file, so a tool-calling LLM can drive it as-is.
+`core` is the boundary that matters. The TUI only ever calls `core.ops`,
+`core.refs` and `DocumentFile`, and every operation takes item IDs and
+returns items, never positions in the file, so a tool-calling LLM can drive
+it as-is.
 
 Runtime dependencies are Textual and watchfiles. Dev dependencies are pytest,
 ruff, mypy (strict) and pre-commit. Pilot tests run Textual's `run_test()`
@@ -64,118 +75,144 @@ inside `asyncio.run()`, which avoids needing pytest-asyncio.
 ## The markdown format
 
 ```markdown
-- ? How should the essay open? <!-- q:a1b2 -->
-  > Start with the story, it's concrete.
-  - ? Which anecdote exactly? <!-- q:c3d4 -->
-  - ?x Does it need background first? <!-- q:e5f6 -->
-    > No, link out instead.
-- ? Who's the audience? <!-- q:g7h8 -->
+- Where is the function to do X? <!-- q:a1b2 -->
+  foo/bar/core.py:30, next to the parser.
+
+  It's called from two places.
+  - [ ] Add a test for it <!-- q:c3d4 -->
+  - [x] Check the caller <!-- q:e5f6 -->
+- Who's coming? <!-- q:g7h8 -->
 ```
 
 ### What the parser recognises
 
-- **Question:** a list item (`-`, `*` or `+`, then one space) whose text starts
-  with `? ` (open) or `?x ` (answered). `- ?x` needs the space after the `x`,
-  so `- ?xylophone` is not a question. A question with no text is not a
-  question.
-- **ID:** an HTML comment at the very end of the question line,
+- **Item:** a list item (`-`, `*` or `+`, then a space) with some text. Its
+  first line is the **subject**, which is what the outline shows. Horizontal
+  rules (`- - -`, `* * *`) and a bare `- [ ]` with no text are not items;
+  numbered lists aren't either.
+- **Box:** `[ ] ` straight after the marker gives the item a box (open),
+  `[x] ` or `[X] ` ticks it. An item without one is plain.
+- **Body:** the lines straight after the subject that are indented further
+  than it and aren't list items themselves, like a commit message's body.
+  Blank lines inside belong to the body when more body follows, as in a
+  markdown list item with several paragraphs; a blank line followed by
+  shallower text ends it. A fenced code block in the body is kept whole, list
+  markers and all. The body's indent is the item's content column (where the
+  text starts after `- `), so code indented further keeps its indentation.
+- **ID:** an HTML comment at the very end of the subject line,
   `<!-- q:… -->`. Any `[A-Za-z0-9_-]+` is accepted when reading; new IDs are
   4 random hex characters, longer only if the short ones run out. A comment
   in the middle of the text is just text.
-- **Answer:** consecutive `>` lines directly under the question line,
-  indented further than the question. The parser strips the `>` and at most one
-  following space, and nothing else. A bare `>` is a blank line in the
-  answer.
 - **Nesting:** worked out from relative indentation (tabs count as 4 columns),
   so 2-space, 4-space and tab-indented notes all parse. New lines are written
   with 2 spaces, or to match existing siblings.
 
 Everything else is a **raw line**, kept verbatim.
 
+**Files in the first format** (`- ? question` and `- ?x question`, with `>`
+answer lines) still open. The `?` or `?x` becomes the start of the item's
+text, and the `>` lines are its body. Nothing is rewritten unless you edit it.
+
 ### Round-trip fidelity
 
 This was the hardest requirement: existing notes must survive load → save
 unchanged apart from added IDs.
 
-- **Source lines are remembered.** Each question stores the exact lines it was
-  parsed from. Until its text, status or answer changes, the serialiser writes
-  those lines back byte for byte. Changing one part re-renders only that part:
-  editing an answer leaves the question line alone, and vice versa.
+- **Source lines are remembered.** Each item stores the exact subject line
+  (`source_subject`) and body lines (`source_body`) it was parsed from, and
+  the serialiser writes them back byte for byte until something changes.
+  Changing the text drops both; ticking, unticking or adding or removing the
+  box drops only the subject line, so the body is left alone.
 - **Raw lines stay in position.** A non-blank raw line belongs to the innermost
-  question indented less than it, so prose under a question travels with it
-  when the question moves. Blank lines belong to whatever the next non-blank
-  line belongs to. A fenced code block (```` ``` ```` or `~~~`) stays whole in
-  the container where it opens, and nothing inside it is parsed.
+  item indented less than it, so prose under an item travels with it when the
+  item moves. Blank lines belong to whatever the next non-blank line belongs
+  to. A fenced code block outside a body stays whole in the container where it
+  opens, and nothing inside it is parsed.
 - **File details are kept.** Line endings (`\n` or `\r\n`), the presence or
   absence of a final newline, and the original list marker all survive.
 - **Missing IDs are appended** as ` <!-- q:xxxx -->` after the line's trailing
   whitespace is trimmed. If the same ID appears twice (usually from
   copy-paste), the second copy gets a fresh ID in place.
-- **Moves re-indent the subtree.** Moving a question to a new depth shifts every
-  line in its subtree, raw lines and answer lines included, by the
-  difference. Answer content is never touched.
+- **Moves re-indent the subtree.** Moving an item to a new depth shifts every
+  line in its subtree, body and raw lines included, by the difference. The
+  text itself is never touched.
 
 The fixtures in `tests/fixtures/` are the contract. `messy.md` covers front
-matter, headings, trailing spaces, plain bullets, questions under plain
-bullets, a multi-line answer with a blank `>` line and odd internal spacing,
-code fences containing fake questions, a blockquote after a blank line, star
-and plus markers, 4-space nesting and no final newline. `crlf_tabs.md` covers
-Windows line endings and tab indentation.
+matter, headings, trailing spaces, plain bullets, a multi-line body with a
+blank line and odd internal spacing, code fences containing fake items,
+star and plus markers, 4-space nesting and no final newline, all in the old
+`?` format. `crlf_tabs.md` covers Windows line endings and tab indentation.
+`missing_ids.md` covers absent and duplicate IDs.
 
-**Known edge:** `>` lines that come after a blank line or after a question's
-children are not part of its answer. They're kept as raw lines in place.
+## Data model (`core.model`)
 
-## Data model
+- `Document` holds the top-level entries and an index of items by ID. It
+  also records the newline style, whether the file ended with a newline, and
+  whether parsing had to add IDs.
+- `Item` has `id`, `text` (the subject line, then the body's lines), `kind`
+  (`PLAIN` or `TODO`), `status` (`OPEN` or `DONE`), `parent`, `indent`,
+  `marker`, and `items` (its children and raw lines, in file order).
+  `subject` and `body` split the text; `box` is `[ ]`, `[x]` or nothing.
+  `ticks` are its children with boxes, and `mixed` is true when they're
+  partly done (the outline draws that as `[-]`). `ancestors()` follows parent
+  pointers; `walk()` and `descendants()` go down.
+- `RawLine` is any line the parser didn't recognise, kept verbatim.
 
-- `Question`: `id`, `text`, `answer` (str, verbatim), `status` (open or
-  answered), `children` (questions only), `items` (questions and raw lines in
-  file order), `parent`. `ancestors()` follows parent pointers, so the trail
-  costs O(depth).
-- `Document`: the root. Holds top-level items, an ID index for O(1) lookup,
-  the newline style, and `ids_assigned` (set when parsing added or replaced
-  IDs).
-- `RawLine`: one unrecognised line.
+A plain item is never done: ticking one gives it a box first.
+
+**Ticks cascade.** An item with boxes under it is ticked exactly when all of
+them are. Ticking or unticking an item does the same to every box under it,
+and then each boxed item above it is settled to agree. Only boxes count: a
+plain item has no say and stops the cascade, both ways. Partly done isn't
+stored; the file keeps `[ ]`, since it isn't done, and `mixed` is worked out
+when drawing. Every operation that can change what's under an item (adding,
+moving, deleting, changing a box) settles the branches it touched, and only
+those, so a hand-edited file that disagrees elsewhere isn't rewritten behind
+your back.
 
 ## Tree operations (`core.ops`)
 
-| Operation | Behaviour |
+| Operation | Does |
 | --- | --- |
-| `add(text, parent_id=None, as_sibling_of=None)` | New open question. As a child, it goes after the last child question; at the root, after the last top-level question (so not after trailing prose). As a sibling, it goes straight after that sibling's subtree. Text must be a single non-empty line. |
-| `answer(id, text)` | Replaces the answer verbatim. An empty answer removes the `>` lines. |
-| `mark_answered(id)` / `reopen(id)` | Status only. |
-| `set_text(id, text)` | Renames. Not bound to a key in the TUI yet. |
-| `move(id, new_parent_id, index=None)` | Moves the subtree. `index` counts among the new parent's child questions. Refuses moves into itself or a descendant (`InvalidMove`). A bad index raises `IndexError` and leaves the document unchanged. |
-| `reorder(id, index)` | `move` within the same parent. |
-| `indent(id)` / `outdent(id)` | Become the last child of the previous sibling / the next sibling of the parent. |
-| `delete(id)` | Removes the whole subtree, including raw lines nested under it. |
+| `add(text, parent_id=None, as_sibling_of=None, kind=PLAIN)` | New open item. As a child, it goes after the last child item; at the root, after the last top-level item (so not after trailing prose). As a sibling, it goes straight after that sibling's subtree. |
+| `set_text(id, text)` | Replace the whole text. It can run over several lines; trailing blank lines are dropped, and a blank first line is rejected (it's the subject). |
+| `set_kind(id, kind)` | Add or remove the box. Removing it reopens the item. |
+| `mark_done(id)` / `reopen(id)` | Tick and untick, with the boxes under it, then settle the boxes above (see ticks, above). `mark_done` gives a plain item a box. |
+| `move(id, new_parent_id, index=None)` | Move an item and its subtree. Refuses cycles; a bad index raises without changing anything. |
+| `reorder(id, index)` | Move among its own siblings. |
+| `indent(id)` / `outdent(id)` | Under the previous sibling / after the parent. |
+| `visible(folded=())` | Items as the outline shows them, leaving out what's under folded items. |
+| `step(id, down, folded=())` | Move one row up or down the outline as shown, so an item can travel into and out of branches. Down past a row with children showing makes it that row's first child. Raises `InvalidMove` at either end. This is what `m` and `shift+↑↓` use. |
+| `replace(old, new, ids, every=False, ignore_case=False)` | Literal replace in each item's text, like vim's `s/old/new/`: the first match on each line, or every one with `every` (vim's g), ignoring case with `ignore_case` (i). An item whose first line would end up blank is left alone. `replaced(text, …)` is the same on a string, for previews. |
+| `delete(id)` | Remove the item, its body, everything under it and any lines nested under it. |
 | `trail(id)` | Ancestors, root-most first. |
 | `next_open(from_id=None)` | See below. |
 
 ### `next_open`: finish the branch, then widen
 
-"Depth-first, finish the current branch before moving across" was ambiguous
-about what happens when the current question's children run out. The rule
-chosen:
+The TUI no longer works through a queue, but `next_open` stays in `core` for
+the MCP server, where "what next" is a natural tool. The rule:
 
-1. Open descendants of the current question, in document order.
+1. Open descendants of the current item, in document order.
 2. Then widen one ancestor at a time. Within each scope, look at the siblings
    after us, then the siblings before us, then the ancestor itself.
 3. At the root this wraps round the whole document.
 
-The current question is never returned. With no `from_id`, it returns the
-first open question in document order.
+The current item is never returned. With no `from_id`, it returns the first
+open item in document order. Plain items are always open, so in practice it
+finds the next item that isn't ticked.
 
 ```
 P (open)
 ├─ C1 (open)
-├─ C2  ← current, just answered
+├─ C2  ← current, just ticked
 └─ C3 (open)
 Q (open)
 
 next_open(C2) → C3 → C1 → P → Q
 ```
 
-This returns you to the question you parked children from once they're done,
+This returns you to the item you added children under once they're done,
 rather than skipping past it. Plain pre-order was the alternative and was
 rejected for that reason.
 
@@ -195,100 +232,237 @@ rejected for that reason.
   yields only when the content differs from what we last wrote, so our own
   saves don't trigger it.
 
+## Which file plain `qq` opens (`core.store.find_queue`)
+
+A queue lives in `.qq/questions.md`. `find_queue` walks up from the current
+folder and returns the nearest `.qq` folder's file, like git finding `.git`, so
+`qq` works from anywhere inside a project. The home folder's `.qq` is the global
+queue and is skipped by that walk: from inside a new project, finding the
+global queue would quietly put that project's items in the wrong place.
+When nothing is found, `find_queue` returns a `QueueChoice` (here, or global)
+and the TUI asks as its first screen: `h`, `g`, or `q` to quit without creating
+anything. From the home folder itself there's nothing to choose, so the global
+queue opens directly.
+
+The command line follows the same choices: a file argument, `--here`, `-g` /
+`--global`, or nothing for the lookup above. The lookup is in `core` so the MCP
+server can find the same file.
+
+## File references (`core.refs`)
+
+Text like `foo/bar/core.py:30` in an item is a reference: a path with an
+extension, `:line`, and optionally `:column`. The extension requirement keeps
+times like `12:30` out, and URLs don't match. References are underlined in
+the outline (not inside the editor).
+
+The path resolves from the project folder (the folder holding `.qq`, else the
+queue file's own folder; `~` and absolute paths work too), and the TUI checks
+it exists before opening it. `o` in the outline, `ctrl+o` in the editor, or a
+click on the underlined reference in the outline all open it. Each underlined
+span carries the reference in its style's meta, which is how a click knows
+what it landed on.
+
+The editor is `$QQ_EDITOR`, else `$VISUAL`, else `$EDITOR`, else `code` if
+it's installed, else `vi` (`choose_editor`). `code`, `cursor`, `codium` and
+`windsurf` get `-g path:line`; `subl`, `zed` and `hx` get `path:line`;
+everything else gets `+line path`, which vi, vim, nvim, nano, emacs, micro and
+kak understand. Editors with their own window (`windowed`) open alongside the
+TUI; anything else runs with the app suspended until you quit it.
+
 ## The TUI
 
-### Focus view (default)
+### How it got here
 
-The trail, the current question (bold, with a coloured bar; answered ones
-show ✓ and dim), and the answer editor. Nothing else, apart from a hint in the
-editor border. When the file has no questions, the view says to press `r`.
+The TUI has been reshaped by using it:
 
-### Two modes
+1. **v1:** a focus view and an outline view, toggled with Tab. Questions were
+   `- ?` items with `>` answers. Single-letter keys parked questions, with Esc
+   switching between typing an answer and giving commands. Too much to learn
+   at once.
+2. **Cut down** to three ctrl keys (ask, done-and-next, quit), always typing
+   into the answer, with a guide on the empty screen.
+3. **Drawn as the file:** the whole markdown file on screen, IDs hidden, the
+   current question's answer edited in place.
+4. **Outliner keys in one view:** arrows, enter and tab, OmniOutliner style.
+   Moving and typing happened in the same place, so it was never clear which
+   you were doing.
+5. **Two panes:** a list for moving, a panel for typing, with the mode always
+   visible. Still split into questions and answers.
+6. **Just an outliner:** the realisation that questions and answers were
+   getting in the way. Every item is text; a question is an item ending in
+   "?", and an answer is an item underneath. An item's first line is its
+   subject and the rest is its body, like a commit message. The format, the
+   model and the TUI were rebuilt around that.
+7. **Settling the keys by use:** `ctrl+j` jotting gave way to `enter` (add
+   here), `n` (add at the bottom) and `m` (pick up and carry), with undo
+   behind all of them. The arrows became folding and `→` editing, because
+   that's what a hand reaches for. `/` and `:` open a vim-like palette.
+   Ticks cascade, and references can be clicked.
 
-The spec's single-letter keys (`n`, `N`, `r`, `u`, `e`, `q`) would otherwise
-be typed into the answer. So:
+The earlier versions are in git history and on the project canvas.
 
-- Opening a question (on start, `ctrl+n`, `ctrl+d`, `u`, `enter` in the
-  outline) puts the cursor in the editor.
-- `esc` leaves the editor and saves. Letter keys then act as commands.
-  `enter` or `i` goes back in.
-- `ctrl+n`, `ctrl+d`, `ctrl+s` and `tab` are priority bindings that work in
-  both modes, and are disabled while a dialog is open.
+### Two panes
+
+- **The outline** (`tui/outline.py`, an `OptionList`) shows every item by its
+  subject, indented by depth, after its number in a dim gutter, with a box if
+  it has one (`[-]` when partly done), `…` when there's more to it than the
+  subject, and `▸ N` when N items are folded under it. Numbers follow the
+  file, so folding doesn't renumber anything. Prose and other raw lines
+  aren't shown. It's for moving and arranging; its keys are commands and
+  never type.
+- **The editor** (`tui/editor.py`) is the selected item's whole text in one
+  text area: the first line is the subject, the rest is the body. It flips to
+  a blank item when adding, and the outline shows a blank row where it will
+  go, filling in live as you type the first line.
+- **The mode is always visible:** the focused pane has the bright border, and
+  the key bar leads with OUTLINE, EDIT, NEW or MOVE and lists that mode's
+  keys. Below 90 columns the panes stack (`HORIZONTAL_BREAKPOINTS`).
 
 ### Keys
 
-| Key | Does |
+| In the outline | Does |
 | --- | --- |
-| `n` / `N` / `r` | Park a question as a child / sibling / at the root. A one-line input pops up; `enter` saves, `esc` cancels, and you stay on the current question. In an empty file, all three park at the root. |
-| `ctrl+n` | Next open question. |
-| `ctrl+d` | Mark answered and go to the next open question. |
-| `u` | Go up to the parent. |
-| `e` | Edit the answer in `$VISUAL`, else `$EDITOR`, else `vi`. On return, one trailing newline is stripped (editors add one) and nothing else. |
-| `ctrl+s` | Save. |
-| `tab` | Toggle focus and outline views. |
-| `q` | Save and quit. |
+| `↑` `↓` / `j` `k` | Move. The editor shows the selected item. |
+| `←` | Fold; if there's nothing to fold, go to the parent. |
+| `→` | Unfold; if there's nothing folded, edit the item. The editor is the pane to the right, and that's where a hand goes. (`↓` already reaches the first child.) |
+| `e` / `ctrl+n` | Edit the selected item, cursor at the end of its first line. |
+| `enter` | New item here, after this one (and its children). |
+| `alt+enter` | New item above. (`shift+enter` too, where the terminal sends it as its own key or as ESC + enter.) |
+| `n` | New top-level item at the bottom; when you're done you're back where you were. |
+| `m` | Pick the item up and carry it (below). |
+| `shift+↑` / `shift+↓` | Move the item one row without picking it up. |
+| `tab` / `shift+tab` | Indent / outdent (`shift+→` / `shift+←` too). |
+| `space` | Tick or untick, cascading (see ticks, above). |
+| `t` | Give the item a box, or take it away. |
+| `x` | Delete; asks first if it has a body or items under it. |
+| `u` | Undo. |
+| `/` `:` | Open the palette with that already typed. |
+| `o` / click | Open the file reference in the item. |
+| `?` | Every key. |
+| `q` | Quit. |
 
-### Outline view
-
-The full tree. Answered branches start collapsed unless something under them
-is still open, and expand/collapse choices survive rebuilds. The current
-question is underlined.
-
-| Key | Does |
+| In the editor | Does |
 | --- | --- |
-| `j` / `k`, arrows | Move. |
-| `enter` | Open the question in the focus view. |
-| `space` | Fold or unfold. |
-| `d` | Delete; asks first if the question has children. |
-| `J` / `K` | Move down / up among siblings. |
-| `>` / `<` | Indent / outdent. |
+| typing | `enter` is a new line, `tab` indents (for code). Saves as you type; a blank first line isn't saved. |
+| `esc` / `ctrl+n` | Back to the outline. A new item is added at that point, unless it's empty. |
+| `ctrl+o` | Open the file reference on the cursor's line, else the first. |
 
-`n`, `N`, `r` and `ctrl+d` apply to the highlighted question here, not the
-current one.
+| Anywhere | Does |
+| --- | --- |
+| `ctrl+p` | The palette (below). Cmd+P never reaches a terminal app. |
+| `ctrl+q` | Quit. |
+
+Textual reports ESC + carriage return as plain `enter`, dropping the alt,
+so `tui/keys.py` wraps its key parser to report `alt+enter` instead
+(`tests/tui/test_keys.py` feeds the raw bytes through, to catch a Textual
+upgrade that changes the private method it wraps). Terminal.app sends
+Shift+Enter as that same sequence.
+
+The key bar is a plain widget rather than Textual's `Footer`, which orders
+keys by where they were first bound, and it changes with the mode. Each mode's
+bar fits in 80 columns.
+
+### Adding and moving
+
+Capturing a thought without losing your place is what matters most, and it's
+three keys:
+
+- **`enter` adds where you are**, as the next sibling. A blank row appears in
+  the outline straight away and fills in as you type; `esc` adds it (or adds
+  nothing, if it's empty).
+- **`n` adds at the bottom**, as a new top-level item, for a thought that has
+  nothing to do with what you're on. Afterwards the selection goes back to
+  where it was.
+- **`m` picks an item up** (MOVE, in blue). `↑` `↓` carry it through the
+  outline as it's shown, into and out of branches (`ops.step`); `tab` /
+  `shift+tab` change its level; `enter` drops it; `esc` puts it back exactly
+  where it was. So anything can be added roughly and placed later.
+
+### Undo
+
+`u` undoes structural changes and edits one at a time. Before each change the
+app pushes the serialised document onto a stack (200 deep) and undo parses
+the last one back, so IDs survive. Editing pushes once per visit to the
+editor, only if the text changed. Picking an item up counts as one change, and
+`esc` while carrying is an undo. A reload from disk clears the stack.
+
+### The palette
+
+`ctrl+p` from either pane, or `/` and `:` in the outline, opens a palette at
+the top: VS Code's quick open with vim's command line in it. What it works on
+depends on the pane it was opened from.
+
+| Type | In the outline | In the editor |
+| --- | --- | --- |
+| words | find items | find items |
+| `/words` | find items | find lines in this item |
+| `//words` | find items | find items |
+| `:34` | item 34 (unfolding to reach it) | line 34 |
+| `/old/new/` | replace in every item | replace in this item |
+| `//old/new/` | replace in every item | replace in every item |
+
+Replace needs the closing slash, so `/src/app.py` stays a search for a path;
+`\/` is a literal slash. Flags follow it as in vim: `g` for every match on a
+line (the first, without it) and `i` to ignore case. The text is literal, not
+a pattern. The palette previews the items that would change and says how
+many; with none, `enter` beeps. A replace is one undo.
 
 ### Saving and reloading
 
-- **Autosave** happens after every structural change, whenever the answer
-  editor loses focus, before moving to another question, and on quit.
-- **External change while clean:** reload silently, keep the current question
+- **Autosave** happens one second after typing stops, after every structural
+  change, before moving to another item, and on quit.
+- **External change while clean:** reload silently, keep the selected item
   by ID, and show a short notice.
-- **External change with unsaved edits** (an uncommitted answer or an unsaved
-  document): a dialog offers `r` to reload and discard yours, or `k` to keep
-  yours and overwrite the file. Nothing is written until you choose.
+- **External change with unsaved edits:** a dialog offers `r` to reload and
+  discard yours, or `k` to keep yours and overwrite the file. Nothing is
+  written until you choose.
 
 ## Testing
 
 `just check` runs format-check, pre-commit (ruff), mypy strict and pytest:
-83 tests, passing on Python 3.12 and 3.13.
+186 tests.
 
-- **Round-trip:** byte-for-byte on every fixture, and for missing IDs, that
-  the only change is the added comments.
+- **Format:** byte-for-byte round-trips; for files without IDs, that the
+  only change is the added comments; what is and isn't an item; bodies with
+  paragraphs and code; old `?` files opening; editing one item leaving the
+  rest untouched.
 - **Ops:** every operation, including insertion position around prose,
-  sibling indent matching, subtree re-indenting, cycle and index errors.
+  sibling indent matching, multi-line text kept verbatim, ticking and box
+  changes, subtree re-indenting, cycle and index errors; `step` through
+  folded and unfolded branches; literal replace with its flags.
+- **Ticks:** cascading down and up, partly done, plain items stopping it, and
+  adding, moving, deleting and box changes settling both places.
 - **`next_open`:** the worked example above, and a table over a deeper tree
-  with answered ancestors.
-- **Store:** atomic write (no temp files left, mode kept), CRLF, symlinks,
-  conflict refusal, a deleted file being recreated, and a live watcher test
-  that ignores our own writes but sees an external one.
-- **TUI pilot:** start-up focus; letters typed into the editor not firing
-  commands; park child, sibling and root; cancel parking; next open; mark
-  answered; up; outline open and reorder; collapsed answered branches; delete
-  confirmation; an empty file; reload when clean; and the conflict dialog.
+  with ticked ancestors.
+- **Store and lookup:** atomic write (no temp files left, mode kept), CRLF,
+  symlinks, conflict refusal, a deleted file being recreated, a live watcher
+  test that ignores our own writes but sees an external one, and every case
+  of the `.qq` lookup.
+- **References:** the pattern (including times and URLs that mustn't match),
+  choosing by cursor line, path resolution, which editor is chosen and each
+  editor's arguments.
+- **Keys:** ESC + enter parsing as `alt+enter`, and other keys unchanged.
+- **TUI pilot:** the outline never typing; moving with the editor following;
+  editing and switching back, including with `→`; enter as a new line in the
+  editor; saving when typing pauses; a blank first line not saved; adding
+  below, above, at the bottom and with a body, the blank row filling in, and
+  adding nothing; the guide in an empty file; picking up, carrying, dropping
+  and putting back; nudging, indent and outdent; folding; undo; ticking, `[-]`
+  and the box; deleting with and without asking; the palette in both panes,
+  replace and its flags; the which-queue choice; reloads and the conflict
+  dialog; opening references with keys and with a click; and how the outline
+  draws items.
 
-The real `qq` command was also smoke-tested in a pseudo-terminal: an
-external edit while open was reloaded, a parked question was saved under the
-right parent, and `q` exited cleanly.
+## Not done yet
 
-## Not in v1
+Out of scope so far: MCP server, LLM integration, VS Code extension, sync,
+multiple files. Next up is `qq add "…"`, to capture from the shell; a VS Code
+task could then run `qq add "${relativeFile}:${lineNumber}"`. Also not done:
 
-From the spec: MCP server, LLM integration, VS Code extension, sync, multiple
-files, search. Also not done:
-
-- Renaming a question from the TUI (`ops.set_text` exists).
 - Configurable keybindings.
-- Remembering the current question between sessions; `qq` starts on the first
-  open question.
-- Undo beyond the answer editor's own.
+- Remembering the selected item and folds between sessions; `qq` starts on
+  the first item with everything unfolded.
+- Clicking references in the editor pane (use `ctrl+o` there).
 
 ## Notes for the MCP server
 
@@ -298,5 +472,6 @@ files, search. Also not done:
   retry rather than forcing.
 - The TUI is already watching, so writes from the MCP server will appear in
   an open `qq` without further work.
-- `next_open` and `trail` are the natural "what should I think about next"
-  and "where am I" tools.
+- Items are addressed by ID. `subject` is the one-line summary to show; `text`
+  is everything. `next_open` and `trail` are the natural "what next" and
+  "where am I" tools.

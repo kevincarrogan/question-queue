@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .model import Container, Document, Question
+from .model import Container, Document, Item
 
 
 def serialise(doc: Document) -> str:
@@ -16,7 +16,7 @@ def serialise(doc: Document) -> str:
 
 def _emit(container: Container, out: list[str]) -> None:
     for item in container.items:
-        if isinstance(item, Question):
+        if isinstance(item, Item):
             out.extend(item.own_lines())
             _emit(item, out)
         else:

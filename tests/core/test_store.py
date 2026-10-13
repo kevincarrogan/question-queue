@@ -16,10 +16,10 @@ def test_open_creates_missing_file(tmp_path: Path) -> None:
 
 def test_open_saves_assigned_ids_immediately(tmp_path: Path) -> None:
     path = tmp_path / "notes.md"
-    path.write_text("# Notes\n- ? No id yet\n")
+    path.write_text("# Notes\n- No id yet\n")
     f = DocumentFile.open(path)
     assert re.fullmatch(
-        r"# Notes\n- \? No id yet <!-- q:[0-9a-f]{4} -->\n", path.read_text()
+        r"# Notes\n- No id yet <!-- q:[0-9a-f]{4} -->\n", path.read_text()
     )
     assert not f.unsaved
 
@@ -31,7 +31,7 @@ def test_save_writes_and_reports_whether_anything_changed(tmp_path: Path) -> Non
     q = ops.add(f.doc, "First")
     assert f.unsaved
     assert f.save() is True
-    assert path.read_text() == f"- ? First <!-- q:{q.id} -->\n"
+    assert path.read_text() == f"- First <!-- q:{q.id} -->\n"
     assert not f.unsaved
 
 
@@ -39,7 +39,7 @@ def test_save_refuses_to_clobber_external_edits(tmp_path: Path) -> None:
     path = tmp_path / "notes.md"
     f = DocumentFile.open(path)
     ops.add(f.doc, "Mine")
-    path.write_text("- ? Theirs <!-- q:abcd -->\n")
+    path.write_text("- Theirs <!-- q:abcd -->\n")
     assert f.changed_on_disk()
     with pytest.raises(ExternalChange):
         f.save()
@@ -62,7 +62,7 @@ def test_atomic_save_leaves_no_temp_files_and_keeps_mode(tmp_path: Path) -> None
 
 def test_crlf_survives_a_save(tmp_path: Path) -> None:
     path = tmp_path / "notes.md"
-    path.write_bytes(b"- ? A <!-- q:aaaa -->\r\n")
+    path.write_bytes(b"- A <!-- q:aaaa -->\r\n")
     f = DocumentFile.open(path)
     ops.add(f.doc, "B")
     f.save()
@@ -84,7 +84,7 @@ def test_writes_through_symlinks(tmp_path: Path) -> None:
 def test_reload(tmp_path: Path) -> None:
     path = tmp_path / "notes.md"
     f = DocumentFile.open(path)
-    path.write_text("- ? External <!-- q:abcd -->\n")
+    path.write_text("- External <!-- q:abcd -->\n")
     f.reload()
     assert f.doc.get("abcd").text == "External"
     assert not f.changed_on_disk()
@@ -110,7 +110,7 @@ def test_watch_sees_external_writes_but_not_our_own(tmp_path: Path) -> None:
         f.save()
         await asyncio.sleep(0.5)
         assert seen == 0
-        path.write_text("- ? theirs <!-- q:abcd -->\n")
+        path.write_text("- theirs <!-- q:abcd -->\n")
         for _ in range(50):
             if seen:
                 break

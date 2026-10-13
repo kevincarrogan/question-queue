@@ -7,6 +7,7 @@ import contextlib
 import os
 import tempfile
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from watchfiles import awatch
@@ -15,6 +16,43 @@ from .errors import ExternalChange
 from .model import Document
 from .parser import parse
 from .serialise import serialise
+
+QUEUE_DIR = ".qq"
+QUEUE_FILE = "questions.md"
+
+
+def queue_in(folder: Path) -> Path:
+    return folder / QUEUE_DIR / QUEUE_FILE
+
+
+@dataclass(frozen=True)
+class QueueChoice:
+    """No queue was found, so the user picks between these two."""
+
+    here: Path
+    home: Path
+
+
+def find_queue(
+    start: Path | None = None, home: Path | None = None
+) -> Path | QueueChoice:
+    """The file to use when none is named.
+
+    The nearest `.qq` folder in `start` or one of its parents wins, like git
+    finds `.git`. The one in `home` is the global queue: it's used without
+    asking only from `home` itself, so that a new project folder offers to
+    start its own queue. The file may not exist yet.
+    """
+    start = (start or Path.cwd()).resolve()
+    home = (home or Path.home()).resolve()
+    if start == home:
+        return queue_in(home)
+    for folder in (start, *start.parents):
+        if folder == home:
+            break
+        if (folder / QUEUE_DIR).is_dir():
+            return queue_in(folder)
+    return QueueChoice(here=queue_in(start), home=queue_in(home))
 
 
 def read_text(path: Path) -> str:

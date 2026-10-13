@@ -1,146 +1,315 @@
 from __future__ import annotations
 
 import os
-import shlex
 import subprocess
-import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
-from textual import on, work
+from rich.text import Text
+from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import ContentSwitcher
+from textual.timer import Timer
+from textual.widget import Widget
+from textual.widgets import OptionList, Static, TextArea
 
-from ..core import DocumentFile, ExternalChange, InvalidMove, Question, ops
-from .focus import AnswerArea, FocusView
-from .modals import ChoiceModal, ParkModal
-from .outline import OutlineTree
+from ..core import (
+    DocumentFile,
+    ExternalChange,
+    InvalidMove,
+    Item,
+    Kind,
+    QueueChoice,
+    ops,
+    parse,
+    serialise,
+)
+from ..core.refs import (
+    FileRef,
+    choose_editor,
+    editor_command,
+    find_refs,
+    project_folder,
+    ref_at,
+    resolve,
+    windowed,
+)
+from . import keys
+from .editor import Back, ItemEditor, Place
+from .modals import (
+    Choice,
+    ChoiceModal,
+    Entry,
+    GoToItem,
+    GoToLine,
+    HelpModal,
+    PaletteModal,
+    Pane,
+    Replace,
+)
+from .outline import NEW_ID, OutlineList
+from .render import draw_line, gutter_width, item_line
 
-type ParkWhere = Literal["child", "sibling", "root"]
+keys.install()
 
-PARK_PROMPTS: dict[ParkWhere, str] = {
-    "child": "Park a question under this one",
-    "sibling": "Park a question alongside this one",
-    "root": "Park a question at the root",
-}
+# How long typing has to pause before it's saved.
+SAVE_DELAY = 1.0
+
+# How many changes `u` can undo.
+UNDO_LIMIT = 200
 
 # Bindings that make no sense while a dialog is open.
-MAIN_SCREEN_ACTIONS = {
-    "toggle_view",
-    "next_open",
-    "done",
-    "save",
-    "park",
-    "up",
-    "external_editor",
+MAIN_SCREEN_ACTIONS = {"switch", "open_ref", "find"}
+
+type Mode = Literal["OUTLINE", "EDIT", "NEW", "MOVE"]
+
+# The key bar for each mode. The mode name leads, so you always know which
+# side you're on.
+KEY_HINTS: dict[Mode, list[tuple[str, str]]] = {
+    "OUTLINE": [
+        ("enter", "new"),
+        ("→ e", "edit"),
+        ("m", "move"),
+        ("space", "tick"),
+        ("u", "undo"),
+        ("^p", "find"),
+        ("?", "keys"),
+    ],
+    "EDIT": [
+        ("esc", "outline"),
+        ("^p", "/find //everywhere :line /old/new/"),
+        ("^o", "open ref"),
+    ],
+    "NEW": [
+        ("esc", "done"),
+        ("first line", "shows in the outline"),
+    ],
+    "MOVE": [
+        ("↑↓", "carry it"),
+        ("tab", "in"),
+        ("shift+tab", "out"),
+        ("enter", "drop it here"),
+        ("esc", "put it back"),
+    ],
 }
+
+
+def tilde(path: Path) -> str:
+    """`path` with the home folder shortened to ~."""
+    try:
+        return str(Path("~") / path.relative_to(Path.home()))
+    except ValueError:
+        return str(path)
 
 
 class QQApp(App[None]):
     CSS_PATH = "app.tcss"
     ENABLE_COMMAND_PALETTE = False
+    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (90, "-wide")]
 
     BINDINGS = [
-        Binding("tab", "toggle_view", show=False, priority=True),
-        Binding("ctrl+n", "next_open", show=False, priority=True),
-        Binding("ctrl+d", "done", show=False, priority=True),
-        Binding("ctrl+s", "save", show=False, priority=True),
-        Binding("n", "park('child')", show=False),
-        Binding("N", "park('sibling')", show=False),
-        Binding("r", "park('root')", show=False),
-        Binding("u", "up", show=False),
-        Binding("e", "external_editor", show=False),
-        Binding("q", "quit", show=False),
+        Binding("ctrl+n", "switch", show=False, priority=True),
+        Binding("ctrl+o", "open_ref", show=False, priority=True),
+        # VS Code's quick open is cmd+p, which terminals can't receive; this is
+        # its Linux and Windows key. A terminal can map cmd+p to send it.
+        Binding("ctrl+p", "find", show=False, priority=True),
+        Binding("ctrl+q", "quit", show=False, priority=True),
     ]
 
-    def __init__(self, path: Path | str, *, watch: bool = True) -> None:
+    file: DocumentFile
+    current_id: str | None
+
+    def __init__(self, path: Path | str | QueueChoice, *, watch: bool = True) -> None:
+        """Open `path`, or with a QueueChoice, ask which file first."""
         super().__init__()
-        self.file = DocumentFile.open(path)
         self.watch_enabled = watch
-        self.current_id: str | None = self._starting_question()
+        self.choice: QueueChoice | None = None
+        self.save_timer: Timer | None = None
+        # Items whose children are hidden. Only for this session.
+        self.folded: set[str] = set()
+        # The file's text before each change, newest last, for `u`.
+        self.undo_stack: list[str] = []
+        # An item picked up with `m`.
+        self.moving_id: str | None = None
+        # Where to go back to after `n`.
+        self.return_focus: Widget | None = None
+        self.return_cursor: tuple[int, int] | None = None
+        if isinstance(path, QueueChoice):
+            self.choice = path
+        else:
+            self.load(path)
+
+    def load(self, path: Path | str) -> None:
+        self.file = DocumentFile.open(path)
+        first = next(self.file.doc.walk(), None)
+        self.current_id = first.id if first else None
         self.title = f"‽ {self.file.path.name}"
+
+    @property
+    def loaded(self) -> bool:
+        return hasattr(self, "file")
 
     # -- layout -------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        with ContentSwitcher(initial="focus"):
-            yield FocusView(id="focus")
-            yield OutlineTree()
+        yield Static(id="where")
+        with Horizontal(id="panes"):
+            yield OutlineList(id="outline")
+            yield ItemEditor(id="editor")
+        yield Static(id="keys")
 
     def on_mount(self) -> None:
-        self.refresh_focus()
-        self.enter_question()
+        if self.choice is None:
+            self.start()
+        else:
+            self.ask_which_queue(self.choice)
+
+    def start(self) -> None:
+        self.query_one("#where", Static).update(f"‽ {tilde(self.file.path)}")
+        self.refresh_outline()
+        self.editor.show(self.current)
+        self.outline.focus()
         if self.watch_enabled:
             self.watch_file()
 
-    @property
-    def focus_view(self) -> FocusView:
-        return self.query_one(FocusView)
+    def ask_which_queue(self, choice: QueueChoice) -> None:
+        def chosen(key: str | None) -> None:
+            if key not in ("h", "g"):
+                self.exit()
+                return
+            self.load(choice.here if key == "h" else choice.home)
+            self.start()
+
+        self.push_screen(
+            ChoiceModal(
+                f"No queue in {tilde(choice.here.parent.parent)} yet.",
+                {
+                    "h": "start one here",
+                    "g": f"use your global one ({tilde(choice.home)})",
+                    "q": "quit",
+                },
+            ),
+            chosen,
+        )
 
     @property
-    def outline(self) -> OutlineTree:
-        return self.query_one(OutlineTree)
+    def outline(self) -> OutlineList:
+        return self.query_one(OutlineList)
 
     @property
-    def in_outline(self) -> bool:
-        return self.query_one(ContentSwitcher).current == "outline"
+    def editor(self) -> ItemEditor:
+        return self.query_one(ItemEditor)
 
     @property
-    def current(self) -> Question | None:
+    def current(self) -> Item | None:
         if self.current_id is None or self.current_id not in self.file.doc:
             return None
         return self.file.doc.get(self.current_id)
 
-    def target_id(self) -> str | None:
-        """What an action applies to: the highlighted question in the outline, else the current one."""
-        if self.in_outline:
-            return self.outline.highlighted_id
-        return self.current_id
+    @property
+    def mode(self) -> Mode:
+        if self.moving_id is not None:
+            return "MOVE"
+        if self.focused is not None and self.editor in self.focused.ancestors_with_self:
+            return "NEW" if self.editor.adding else "EDIT"
+        return "OUTLINE"
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         return not (
             action in MAIN_SCREEN_ACTIONS and isinstance(self.screen, ModalScreen)
         )
 
-    # -- state --------------------------------------------------------------
+    # -- drawing --------------------------------------------------------------
 
-    def _starting_question(self) -> str | None:
-        doc = self.file.doc
-        first = ops.next_open(doc) or next(doc.walk(), None)
-        return first.id if first else None
+    def refresh_outline(self) -> None:
+        self.folded &= self.file.doc.ids()
+        self.outline.show_doc(
+            self.file.doc,
+            self.moving_id or self.current_id,
+            folded=self.folded,
+            new_row=self.new_row() if self.editor.adding else None,
+        )
+        self.outline.set_class(self.moving_id is not None, "-moving")
+        self.refresh_keys()
 
-    def refresh_focus(self) -> None:
-        question = self.current
-        trail = question.ancestors() if question else []
-        self.focus_view.show(question, trail)
+    def refresh_keys(self) -> None:
+        mode = self.mode
+        bar = Text()
+        bar.append(f" {mode} ", style="bold reverse")
+        for key, does in KEY_HINTS[mode]:
+            bar.append("  ")
+            bar.append(key, style="bold")
+            bar.append(f" {does}")
+        self.query_one("#keys", Static).update(bar)
 
-    def refresh_outline(self, cursor_id: str | None = None) -> None:
-        if self.in_outline:
-            self.outline.rebuild(
-                self.file.doc, self.current_id, cursor_id or self.outline.highlighted_id
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        self.refresh_keys()
+
+    def numbering(self, item: Item) -> tuple[int, int]:
+        """An item's number (its place in file order) and the gutter's width."""
+        number = next(
+            n for n, each in enumerate(self.file.doc.walk(), 1) if each is item
+        )
+        return number, gutter_width(self.file.doc)
+
+    # -- undo -------------------------------------------------------------------
+
+    def snapshot(self) -> None:
+        """Remember the file as it is, before a change."""
+        self.undo_stack.append(serialise(self.file.doc))
+        del self.undo_stack[:-UNDO_LIMIT]
+
+    def undo(self) -> None:
+        if not self.undo_stack:
+            self.notify("Nothing to undo", timeout=1.5)
+            return
+        self.file.doc = parse(self.undo_stack.pop())
+        self.autosave()
+        if self.current is None:
+            first = next(self.file.doc.walk(), None)
+            self.current_id = first.id if first else None
+        self.editor.shown_id = None
+        self.refresh_outline()
+        self.editor.show(self.current)
+
+    # -- keeping the document in step with the editor ---------------------------
+
+    def unsaved_edits(self) -> bool:
+        editor = self.editor
+        if (
+            editor.adding
+            or editor.shown_id is None
+            or editor.shown_id not in self.file.doc
+        ):
+            return False
+        return editor.text != self.file.doc.get(editor.shown_id).text
+
+    def commit_edits(self) -> None:
+        """Copy the editor's text into the document, unless its first line is blank."""
+        editor = self.editor
+        if (
+            editor.adding
+            or editor.shown_id is None
+            or editor.shown_id not in self.file.doc
+        ):
+            return
+        item = self.file.doc.get(editor.shown_id)
+        if editor.text == item.text:
+            return
+        before = serialise(self.file.doc)
+        try:
+            ops.set_text(self.file.doc, item.id, editor.text)
+        except ValueError:
+            editor.head(
+                "The first line is what the outline shows, so it can't be blank."
             )
-
-    def refresh_all(self, cursor_id: str | None = None) -> None:
-        self.refresh_focus()
-        self.refresh_outline(cursor_id)
-
-    def enter_question(self) -> None:
-        """Opening a question puts you straight into its answer."""
-        if self.current is not None:
-            self.focus_view.editor.focus()
-        else:
-            self.focus_view.focus()
-
-    def editor_dirty(self) -> bool:
-        question = self.current
-        return question is not None and self.focus_view.editor.text != question.answer
-
-    def commit_answer(self) -> None:
-        question = self.current
-        if question is not None and self.focus_view.shown_id == question.id:
-            ops.answer(self.file.doc, question.id, self.focus_view.editor.text)
+            return
+        self.undo_stack.append(before)
+        del self.undo_stack[:-UNDO_LIMIT]
+        editor.head("")
 
     def autosave(self) -> None:
         try:
@@ -150,95 +319,445 @@ class QQApp(App[None]):
         except OSError as error:
             self.notify(f"Couldn't save: {error}", severity="error")
 
-    def go_to(self, question_id: str | None) -> None:
-        """Make a question current and show it in whichever view is up."""
-        self.commit_answer()
-        self.autosave()
-        self.current_id = question_id
-        self.refresh_all(cursor_id=question_id)
-        if not self.in_outline:
-            self.enter_question()
+    def save_edits(self) -> None:
+        self.commit_edits()
+        if self.file.unsaved:
+            self.autosave()
+            self.refresh_outline()
 
-    # -- actions ------------------------------------------------------------
+    @on(TextArea.Changed, "#text")
+    def edited(self) -> None:
+        # The outline follows the first line as it's typed.
+        if self.editor.adding:
+            first, _, rest = self.editor.text.partition("\n")
+            self.outline.redraw_line(
+                NEW_ID,
+                draw_line(
+                    self.new_row()[1],
+                    first,
+                    more=bool(rest.strip()),
+                    width=gutter_width(self.file.doc),
+                ),
+            )
+            return
+        item = self.current
+        if item is not None and self.editor.shown_id == item.id:
+            number, width = self.numbering(item)
+            self.outline.redraw_line(
+                item.id, item_line(item, self.editor.text, number=number, width=width)
+            )
+        if self.save_timer is not None:
+            self.save_timer.stop()
+        self.save_timer = self.set_timer(SAVE_DELAY, self.save_edits)
 
-    def action_toggle_view(self) -> None:
-        switcher = self.query_one(ContentSwitcher)
-        if self.in_outline:
-            switcher.current = "focus"
-            self.refresh_focus()
-            self.enter_question()
+    def select(self, item_id: str | None) -> None:
+        """Make an item the selected one on both sides, keeping the focus where it is."""
+        self.save_edits()
+        self.current_id = item_id
+        self.refresh_outline()
+        self.editor.show(self.current)
+
+    @on(OptionList.OptionHighlighted, "#outline")
+    def highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if self.moving_id is not None or self.editor.adding:
+            return
+        item_id = event.option.id
+        if item_id in self.file.doc and item_id != self.current_id:
+            self.save_edits()
+            self.current_id = item_id
+            self.editor.show(self.current)
+
+    # -- switching sides ----------------------------------------------------------
+
+    def action_switch(self) -> None:
+        """ctrl+n: into the editor from the outline, or back out of it."""
+        if self.moving_id is not None:
+            return
+        if self.mode == "OUTLINE":
+            if self.current is None:
+                self.start_new("after")
+            else:
+                self.edit_current()
         else:
-            self.commit_answer()
-            self.autosave()
-            switcher.current = "outline"
-            self.outline.rebuild(self.file.doc, self.current_id, self.current_id)
-            self.outline.focus()
+            self.back()
 
-    def action_park(self, where: ParkWhere) -> None:
-        anchor = self.target_id()
-        if anchor is None:
-            where = "root"
+    def edit_current(self) -> None:
+        """Into the editor, with the cursor at the end of the first line."""
+        area = self.editor.text_area
+        area.focus()
+        area.move_cursor((0, len(area.document.get_line(0))))
 
-        def park(text: str | None) -> None:
-            if text is None:
-                return
-            doc = self.file.doc
-            if where == "child":
-                question = ops.add(doc, text, parent_id=anchor)
-            elif where == "sibling":
-                question = ops.add(doc, text, as_sibling_of=anchor)
-            else:
-                question = ops.add(doc, text)
-            self.autosave()
-            if self.current_id is None:
-                # The first question in an empty file becomes the current one.
-                self.go_to(question.id)
-            else:
-                self.refresh_all()
-            self.notify(f"Parked: {text}", timeout=1.5)
-
-        self.push_screen(ParkModal(PARK_PROMPTS[where]), park)
-
-    def action_next_open(self) -> None:
-        self.commit_answer()
-        question = ops.next_open(self.file.doc, self.target_id())
-        if question is None:
-            self.notify("No other open questions")
+    @on(Back)
+    def back(self) -> None:
+        if self.editor.adding:
+            self.finish_new()
             return
-        self.go_to(question.id)
+        self.save_edits()
+        self.outline.focus()
 
-    def action_done(self) -> None:
-        target = self.target_id()
-        if target is None:
-            return
-        self.commit_answer()
-        ops.mark_answered(self.file.doc, target)
-        self.autosave()
-        question = ops.next_open(self.file.doc, target)
-        if question is None:
-            self.notify("Nothing left open")
-            self.refresh_all()
-            return
-        self.go_to(question.id)
+    # -- the outline's keys ---------------------------------------------------------
 
-    def action_up(self) -> None:
-        question = self.current
-        if question is None or question.parent_id is None:
-            self.notify("Already at the top")
+    @on(OutlineList.Request)
+    def outline_key(self, event: OutlineList.Request) -> None:
+        if self.moving_id is not None:
+            self.move_key(event.action)
             return
-        self.go_to(question.parent_id)
+        item = self.current
+        match event.action:
+            case "new_here":
+                self.start_new("after")
+            case "new_above":
+                self.start_new("before")
+            case "new_at_bottom":
+                self.new_at_bottom()
+            case "edit" if item is not None:
+                self.edit_current()
+            case "left" if item is not None:
+                self.left(item)
+            case "right" if item is not None:
+                self.right(item)
+            case "nudge_up" | "nudge_down" if item is not None:
+                self.change(lambda: self.step(item, down=event.action == "nudge_down"))
+            case "indent" | "outdent" if item is not None:
+                self.change(lambda: self.shift(item, outdent=event.action == "outdent"))
+            case "move" if item is not None:
+                self.pick_up(item)
+            case "tick" if item is not None:
+                # A plain item is always open, so space gives it a ticked box.
+                if item.is_open:
+                    self.change(lambda: ops.mark_done(self.file.doc, item.id))
+                else:
+                    self.change(lambda: ops.reopen(self.file.doc, item.id))
+            case "toggle_box" if item is not None:
+                kind = Kind.PLAIN if item.kind is Kind.TODO else Kind.TODO
+                self.change(lambda: ops.set_kind(self.file.doc, item.id, kind))
+            case "delete" if item is not None:
+                self.delete(item)
+            case "undo":
+                self.undo()
+            case "find":
+                self.action_find("/")
+            case "goto":
+                self.action_find(":")
+            case "help":
+                self.push_screen(HelpModal())
+            case "open_ref":
+                self.action_open_ref()
+            case "quit":
+                self.call_next(self.action_quit)
 
-    def action_save(self) -> None:
-        self.commit_answer()
+    def change(self, apply: Callable[[], object]) -> None:
+        """Make a structural change: remember the file first, so `u` can undo
+        it, then save and redraw. A move with nowhere to go just beeps."""
+        self.commit_edits()
+        before = serialise(self.file.doc)
         try:
-            saved = self.file.save()
-        except ExternalChange:
-            self.on_external_change()
+            apply()
+        except InvalidMove:
+            self.bell()
             return
-        self.notify("Saved" if saved else "Nothing to save", timeout=1.5)
+        if serialise(self.file.doc) == before:
+            return
+        self.undo_stack.append(before)
+        del self.undo_stack[:-UNDO_LIMIT]
+        self.autosave()
+        self.refresh_outline()
+        self.editor.show(self.current)
+
+    def step(self, item: Item, *, down: bool) -> None:
+        ops.step(self.file.doc, item.id, down=down, folded=self.folded)
+
+    def shift(self, item: Item, *, outdent: bool) -> None:
+        if outdent:
+            ops.outdent(self.file.doc, item.id)
+        else:
+            ops.indent(self.file.doc, item.id)
+            # Tucked under a folded item, it would vanish: open that up.
+            self.folded.discard(item.parent_id or "")
+
+    def left(self, item: Item) -> None:
+        """Fold this item, or if it's folded or has nothing under it, go to its parent."""
+        if item.children and item.id not in self.folded:
+            self.folded.add(item.id)
+            self.refresh_outline()
+        elif item.parent_id is not None:
+            self.select(item.parent_id)
+        else:
+            self.bell()
+
+    def right(self, item: Item) -> None:
+        """Unfold this item, or if there's nothing folded, edit it: the
+        editor is the pane to the right. (↓ already goes to the first child.)"""
+        if item.children and item.id in self.folded:
+            self.folded.discard(item.id)
+            self.refresh_outline()
+        else:
+            self.edit_current()
+
+    def delete(self, item: Item) -> None:
+        def confirmed(choice: str | None) -> None:
+            if choice != "y":
+                return
+            rows = ops.visible(self.file.doc, self.folded)
+            index = rows.index(item)
+            gone = {item.id, *(each.id for each in item.descendants())}
+            later = [each for each in rows[index + 1 :] if each.id not in gone]
+            earlier = rows[:index]
+            neighbour = later[0] if later else (earlier[-1] if earlier else None)
+            self.change(lambda: ops.delete(self.file.doc, item.id))
+            self.select(neighbour.id if neighbour else None)
+
+        count = sum(1 for _ in item.descendants())
+        if count or item.body:
+            under = (
+                f" and the {count} item{'s' if count > 1 else ''} under it"
+                if count
+                else ""
+            )
+            self.push_screen(
+                ChoiceModal(
+                    f"Delete “{item.subject}”{under}? (u undoes it)",
+                    {"y": "delete", "n": "keep"},
+                ),
+                confirmed,
+            )
+        else:
+            confirmed("y")
+
+    # -- finding --------------------------------------------------------------------
+
+    def action_find(self, start: str = "") -> None:
+        """ctrl+p: the palette. In the outline it works on items; in the
+        editor on the item being edited, with // for every item."""
+        if self.moving_id is not None or self.editor.adding:
+            return
+        area = self.editor.text_area
+        pane: Pane = "editor" if self.focused is area else "outline"
+        self.save_edits()
+        entries = [
+            Entry(number, item.text, item.id)
+            for number, item in enumerate(self.file.doc.walk(), 1)
+        ]
+
+        def chosen(choice: Choice | None) -> None:
+            match choice:
+                case GoToItem(item_id) if item_id in self.file.doc:
+                    # Open up whatever it's folded inside.
+                    for ancestor in self.file.doc.get(item_id).ancestors():
+                        self.folded.discard(ancestor.id)
+                    self.select(item_id)
+                case GoToLine(row, column):
+                    area.focus()
+                    area.move_cursor((row, column))
+                case Replace():
+                    self.replace_text(choice, pane)
+
+        self.push_screen(
+            PaletteModal(entries, pane=pane, start=start, current_id=self.current_id),
+            chosen,
+        )
+
+    def replace_text(self, replace: Replace, pane: Pane) -> None:
+        doc = self.file.doc
+        if replace.everywhere or pane == "outline":
+            ids = [item.id for item in doc.walk()]
+        else:
+            ids = [self.current_id] if self.current_id is not None else []
+        area = self.editor.text_area
+        cursor = area.cursor_location
+        changed: list[Item] = []
+        self.change(
+            lambda: changed.extend(
+                ops.replace(
+                    doc,
+                    replace.old,
+                    replace.new,
+                    ids,
+                    every=replace.every,
+                    ignore_case=replace.ignore_case,
+                )
+            )
+        )
+        if pane == "editor":
+            area.focus()
+            last = area.document.line_count - 1
+            row = min(cursor[0], last)
+            area.move_cursor((row, min(cursor[1], len(area.document.get_line(row)))))
+        plural = "s" if len(changed) != 1 else ""
+        self.notify(f"Replaced in {len(changed)} item{plural}", timeout=2)
+
+    # -- adding ---------------------------------------------------------------------
+
+    def start_new(self, place: Place) -> None:
+        self.save_edits()
+        self.editor.start_new(self.current, place)
+        self.refresh_outline()
+
+    def new_at_bottom(self) -> None:
+        """n: a new top-level item at the end. Then back on the item you were on."""
+        area = self.editor.text_area
+        self.return_focus = self.focused
+        self.return_cursor = area.cursor_location if self.focused is area else None
+        self.save_edits()
+        self.editor.start_new(self.current, "end")
+        self.editor.jotting = True
+        self.refresh_outline()
+
+    def new_row(self) -> tuple[int, int]:
+        """Where the blank row for a new item goes in the outline, and its depth."""
+        rows = ops.visible(self.file.doc, self.folded)
+        anchor = self.current
+        if anchor is None or self.editor.place == "end":
+            return len(rows), 0
+        position = rows.index(anchor)
+        if self.editor.place == "before":
+            return position, anchor.depth
+        position += 1 + sum(1 for row in rows if anchor in row.ancestors())
+        depth = anchor.depth + (1 if self.editor.place == "under" else 0)
+        return position, depth
+
+    def finish_new(self) -> None:
+        """Keep the new item if it has a first line. From enter, land on it;
+        from n, go back to where you were."""
+        doc = self.file.doc
+        anchor = self.current
+        text = self.editor.text
+        returning = self.editor.jotting
+        before = serialise(doc)
+        try:
+            if anchor is None or self.editor.place == "end":
+                item = ops.add(doc, text)
+            elif self.editor.place == "under":
+                item = ops.add(doc, text, parent_id=anchor.id)
+            else:
+                item = ops.add(doc, text, as_sibling_of=anchor.id)
+                if self.editor.place == "before":
+                    ops.reorder(doc, item.id, anchor.parent.children.index(anchor))
+        except ValueError:
+            # Nothing typed (or only blank lines): no item, and the blank row goes.
+            item = None
+        if item is not None:
+            self.undo_stack.append(before)
+            del self.undo_stack[:-UNDO_LIMIT]
+            self.autosave()
+        if returning or item is None:
+            self.back_where_you_were()
+            return
+        self.current_id = item.id
+        self.editor.show(item)
+        self.refresh_outline()
+        self.outline.focus()
+
+    def back_where_you_were(self) -> None:
+        """The item you were on, with the focus and cursor as they were."""
+        self.editor.show(self.current)
+        self.refresh_outline()
+        target = self.return_focus
+        cursor = self.return_cursor
+        self.return_focus = self.return_cursor = None
+        area = self.editor.text_area
+        if target is area and area.display:
+            area.focus()
+            if cursor is not None:
+                area.move_cursor(cursor)
+        else:
+            self.outline.focus()
+        self.refresh_keys()
+
+    # -- moving -----------------------------------------------------------------------
+
+    def pick_up(self, item: Item) -> None:
+        """m: carry an item (and everything under it) with the arrow keys."""
+        self.commit_edits()
+        self.snapshot()
+        self.moving_id = item.id
+        self.refresh_outline()
+
+    def move_key(self, action: str) -> None:
+        assert self.moving_id is not None
+        item = self.file.doc.get(self.moving_id)
+        try:
+            match action:
+                case "nudge_up" | "nudge_down":
+                    self.step(item, down=action == "nudge_down")
+                case "indent" | "outdent":
+                    self.shift(item, outdent=action == "outdent")
+                case "new_here" | "move":
+                    self.drop()
+                    return
+                case "escape":
+                    self.put_back()
+                    return
+                case _:
+                    self.bell()
+                    return
+        except InvalidMove:
+            self.bell()
+            return
+        self.autosave()
+        self.refresh_outline()
+
+    def drop(self) -> None:
+        moved = self.moving_id
+        self.moving_id = None
+        if self.undo_stack and self.undo_stack[-1] == serialise(self.file.doc):
+            self.undo_stack.pop()  # it didn't move after all
+        self.current_id = moved
+        self.refresh_outline()
+        self.editor.show(self.current)
+
+    def put_back(self) -> None:
+        """esc while moving: back where it was picked up from."""
+        self.moving_id = None
+        self.undo()
+
+    # -- opening references and quitting ------------------------------------------
+
+    def action_open_ref(self) -> None:
+        """Open the file:line reference on the cursor's line (else the first) in an editor."""
+        if self.current is None:
+            return
+        area = self.editor.text_area
+        row = area.cursor_location[0] if self.focused is area else 0
+        ref = ref_at(area.text, row)
+        if ref is None:
+            self.notify("No file:line in this item, e.g. src/app.py:30")
+            return
+        self.open_ref(ref)
+
+    @on(OutlineList.OpenRef)
+    def clicked_ref(self, event: OutlineList.OpenRef) -> None:
+        self.open_ref(find_refs(event.ref)[0])
+
+    def open_ref(self, ref: FileRef) -> None:
+        """Open the file at the line in your editor: one with its own window
+        (VS Code and the like) opens alongside; one in the terminal takes
+        over until you quit it."""
+        path = resolve(ref, project_folder(self.file.path))
+        if not path.exists():
+            self.notify(f"Can't find {path}", severity="warning")
+            return
+        self.save_edits()
+        editor = choose_editor(os.environ)
+        argv = editor_command(editor, path, ref.line)
+        try:
+            if windowed(editor):
+                subprocess.run(argv, check=False, capture_output=True)
+            else:
+                with self.suspend():
+                    subprocess.run(argv, check=False)
+        except OSError as error:
+            self.notify(f"Couldn't run {editor}: {error}", severity="error")
 
     async def action_quit(self) -> None:
-        self.commit_answer()
+        if not self.loaded:
+            self.exit()
+            return
+        if self.editor.adding:
+            self.finish_new()
+        if self.moving_id is not None:
+            self.drop()
+        self.commit_edits()
         if self.file.unsaved:
             try:
                 self.file.save()
@@ -246,98 +765,6 @@ class QQApp(App[None]):
                 self.on_external_change()
                 return
         self.exit()
-
-    def action_external_editor(self) -> None:
-        question = self.current
-        if question is None or self.in_outline:
-            return
-        self.commit_answer()
-        editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
-        fd, tmp = tempfile.mkstemp(prefix=f"qq-{question.id}-", suffix=".md")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-                f.write(question.answer)
-            with self.suspend():
-                subprocess.run([*shlex.split(editor), tmp], check=False)
-            with open(tmp, encoding="utf-8", newline="") as f:
-                text = f.read()
-        finally:
-            os.unlink(tmp)
-        # Editors add a final newline; that is the only thing taken off.
-        text = text.removesuffix("\n")
-        ops.answer(self.file.doc, question.id, text)
-        self.autosave()
-        self.refresh_focus()
-
-    # -- messages -----------------------------------------------------------
-
-    @on(AnswerArea.Left)
-    def answer_left(self) -> None:
-        self.commit_answer()
-        self.autosave()
-
-    @on(OutlineTree.Request)
-    def outline_request(self, event: OutlineTree.Request) -> None:
-        doc = self.file.doc
-        question = doc.get(event.question_id)
-        if event.action == "open":
-            self.query_one(ContentSwitcher).current = "focus"
-            self.go_to(question.id)
-            return
-        if event.action == "delete":
-            self.delete(question)
-            return
-        siblings = question.parent.children
-        position = siblings.index(question)
-        try:
-            if event.action == "move_up" and position > 0:
-                ops.reorder(doc, question.id, position - 1)
-            elif event.action == "move_down" and position < len(siblings) - 1:
-                ops.reorder(doc, question.id, position + 1)
-            elif event.action == "indent":
-                ops.indent(doc, question.id)
-            elif event.action == "outdent":
-                ops.outdent(doc, question.id)
-            else:
-                return
-        except InvalidMove as error:
-            self.notify(str(error), severity="warning")
-            return
-        self.autosave()
-        self.refresh_all(cursor_id=question.id)
-
-    def delete(self, question: Question) -> None:
-        def confirmed(choice: str | None) -> None:
-            if choice != "y":
-                return
-            parent = question.parent
-            position = parent.children.index(question)
-            ops.delete(self.file.doc, question.id)
-            # Leave the cursor on the next sibling, else the previous, else the parent.
-            remaining = parent.children
-            fallback: Question | None = None
-            if remaining:
-                fallback = remaining[min(position, len(remaining) - 1)]
-            elif isinstance(parent, Question):
-                fallback = parent
-            if self.current_id not in self.file.doc:
-                replacement = ops.next_open(self.file.doc) or fallback
-                self.current_id = replacement.id if replacement else None
-            self.autosave()
-            self.refresh_all(cursor_id=fallback.id if fallback else None)
-
-        count = sum(1 for _ in question.descendants())
-        if count:
-            plural = "s" if count > 1 else ""
-            self.push_screen(
-                ChoiceModal(
-                    f"Delete “{question.text}” and the {count} question{plural} under it?",
-                    {"y": "delete", "n": "cancel"},
-                ),
-                confirmed,
-            )
-        else:
-            confirmed("y")
 
     # -- the file changing under us ------------------------------------------
 
@@ -351,7 +778,7 @@ class QQApp(App[None]):
             return
         if isinstance(self.screen, ChoiceModal):
             return
-        if not (self.editor_dirty() or self.file.unsaved):
+        if not (self.unsaved_edits() or self.file.unsaved):
             self.reload_from_disk()
             return
 
@@ -359,7 +786,7 @@ class QQApp(App[None]):
             if choice == "r":
                 self.reload_from_disk()
             elif choice == "k":
-                self.commit_answer()
+                self.commit_edits()
                 self.file.save(force=True)
                 self.notify("Kept your version")
 
@@ -373,8 +800,13 @@ class QQApp(App[None]):
 
     def reload_from_disk(self) -> None:
         self.file.reload()
+        self.undo_stack.clear()
         if self.current_id not in self.file.doc:
-            self.current_id = self._starting_question()
-        self.focus_view.shown_id = None
-        self.refresh_all()
+            first = next(self.file.doc.walk(), None)
+            self.current_id = first.id if first else None
+        if self.moving_id not in self.file.doc:
+            self.moving_id = None
+        self.editor.shown_id = None
+        self.refresh_outline()
+        self.editor.show(self.current)
         self.notify("Reloaded: the file changed on disk", timeout=2)

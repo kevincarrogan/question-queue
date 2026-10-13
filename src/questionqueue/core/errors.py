@@ -2,17 +2,17 @@ class QuestionQueueError(Exception):
     """Base for every error the core raises."""
 
 
-class QuestionNotFound(QuestionQueueError, KeyError):
-    def __init__(self, question_id: str) -> None:
-        super().__init__(question_id)
-        self.question_id = question_id
+class ItemNotFound(QuestionQueueError, KeyError):
+    def __init__(self, item_id: str) -> None:
+        super().__init__(item_id)
+        self.item_id = item_id
 
     def __str__(self) -> str:
-        return f"no question with id {self.question_id!r}"
+        return f"no item with id {self.item_id!r}"
 
 
 class InvalidMove(QuestionQueueError, ValueError):
-    """A move that would put a question inside itself, or has nowhere to go."""
+    """A move that would put an item inside itself, or has nowhere to go."""
 
 
 class ExternalChange(QuestionQueueError):

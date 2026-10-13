@@ -82,7 +82,7 @@ class ItemEditor(Vertical):
             self.shown_id = None
             self.head("Nothing selected.")
             return
-        self.head("Done" if item.box == "[x]" else "")
+        self.head("")
         if self.shown_id != item.id or self.text_area.text != item.text:
             with self.text_area.prevent(TextArea.Changed):
                 self.text_area.load_text(item.text)

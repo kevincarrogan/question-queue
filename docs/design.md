@@ -24,10 +24,9 @@ by hand.
 | Import package | `questionqueue` |
 | Command | `qq` |
 
-The initials spell the command. `quarry` (the working folder name) and `qq`
+The initials spell the command. `quarry` (the first working name) and `qq`
 are taken on PyPI by unrelated projects; `interrobang` was considered and
-dropped because it doesn't match `qq`. The folder is still called `quarry`
-and will be renamed to `question-queue`.
+dropped because it doesn't match `qq`.
 
 ## Layout
 

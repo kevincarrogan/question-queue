@@ -1,0 +1,17 @@
+# Local hooks run the ruff pinned in uv.lock, so pre-commit and `just` never
+# disagree about versions. Fixtures are deliberately messy markdown and are
+# left alone.
+exclude: ^tests/fixtures/
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]

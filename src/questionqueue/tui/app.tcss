@@ -1,0 +1,81 @@
+Screen {
+    background: $background;
+}
+
+ContentSwitcher {
+    height: 1fr;
+}
+
+FocusView {
+    padding: 1 4;
+    height: 1fr;
+}
+
+#trail {
+    color: $text-muted;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#question {
+    text-style: bold;
+    color: $text;
+    background: $boost;
+    border-left: thick $accent;
+    padding: 1 2;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#question.answered {
+    border-left: thick $success;
+    color: $text-muted;
+}
+
+#question.empty {
+    text-style: italic;
+    border-left: thick $panel;
+    color: $text-muted;
+}
+
+#answer {
+    height: 1fr;
+    border: round $panel;
+    padding: 0 1;
+}
+
+#answer:focus {
+    border: round $accent;
+}
+
+#answer > .text-area--cursor-line {
+    background: transparent;
+}
+
+#outline {
+    padding: 1 2;
+    height: 1fr;
+}
+
+ParkModal, ChoiceModal {
+    align: center middle;
+    background: $background 60%;
+}
+
+.dialog {
+    width: 72;
+    max-width: 90%;
+    height: auto;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+}
+
+.dialog Input {
+    margin-top: 1;
+}
+
+.dialog .choices {
+    margin-top: 1;
+    color: $text-muted;
+}

@@ -1,0 +1,21 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-13T09:04:36Z" },
+  "title": "Question Queue",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1200, "h": 760, "title": "Question Queue v1" },
+    "Roadmap.dc.html": { "x": 1280, "y": 0, "w": 1200, "h": 760, "title": "Ideas and next steps" },
+    "NextOpen.dc.html": { "x": 0, "y": 880, "w": 1200, "h": 760, "title": "How next_open moves" },
+    "Decisions.dc.html": { "x": 1280, "y": 880, "w": 1200, "h": 760, "title": "Decisions so far" }
+  },
+  "order": ["Main.dc.html", "Roadmap.dc.html", "NextOpen.dc.html", "Decisions.dc.html"],
+  "notes": {
+    "heading": { "x": 0, "y": -300, "text": "Question Queue", "kind": "title1", "maxW": 2480 },
+    "parked1": { "x": 2600, "y": 0, "w": 320, "text": "Rename a question from the TUI? ops.set_text already exists; it just needs a key.", "fill": "teal" },
+    "parked2": { "x": 2600, "y": 480, "w": 320, "text": "Should ctrl+d on a question with no answer ask first, or is an empty answer fine?", "fill": "orange" },
+    "parked3": { "x": 2600, "y": 960, "w": 320, "text": "The ‽ glyph has nowhere to live in the focus view. Window title? Empty state?", "fill": "purple" }
+  },
+  "designSystems": []
+}

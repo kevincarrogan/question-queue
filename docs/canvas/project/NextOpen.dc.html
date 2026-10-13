@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>How next_open moves</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3446C4}a:hover{color:#232F8A}
+</style>
+</helmet>
+<div style="width: 1200px; height: 760px; box-sizing: border-box; padding: 56px 64px; background: #F2F3EF; color: #181B20; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; display: flex; flex-direction: column; gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 44px; font-weight: 600; line-height: 1.05">Finish the branch, then widen</h1>
+<p style="margin: 0; font-size: 17px; line-height: 1.5; color: #3A3F48; max-width: 46em">What ctrl+n and ctrl+d pick next. Once the questions you parked are answered, you land back on the question you parked them from.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; flex-grow: 1">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 28px 32px; background: #FFFFFF; border: 1px solid #D5D8CF; border-radius: 8px; font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 17px">
+<span style="font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B; margin-bottom: 8px">Order after answering C2</span>
+<div style="display: flex; align-items: center; gap: 14px"><span style="width: 30px; height: 30px; border-radius: 15px; background: {{accent}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 14px">3</span><b style="color: {{accent}}">?</b><span>P</span></div>
+<div style="display: flex; align-items: center; gap: 14px; padding-left: 44px; border-left: 2px solid #D5D8CF; margin-left: 14px"><span style="width: 30px; height: 30px; border-radius: 15px; background: {{accent}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 14px">2</span><b style="color: {{accent}}">?</b><span>C1</span></div>
+<div style="display: flex; align-items: center; gap: 14px; padding-left: 44px; border-left: 2px solid #D5D8CF; margin-left: 14px"><span style="width: 30px; height: 30px; border-radius: 15px; border: 2px solid #1E7558; box-sizing: border-box; color: #1E7558; display: flex; align-items: center; justify-content: center; font-size: 13px">✓</span><b style="color: #1E7558">?x</b><span style="color: #5A606B">C2</span><span style="font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; font-size: 14px; color: #5A606B">you were here</span></div>
+<div style="display: flex; align-items: center; gap: 14px; padding-left: 44px; border-left: 2px solid #D5D8CF; margin-left: 14px"><span style="width: 30px; height: 30px; border-radius: 15px; background: {{accent}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 14px">1</span><b style="color: {{accent}}">?</b><span>C3</span></div>
+<div style="display: flex; align-items: center; gap: 14px"><span style="width: 30px; height: 30px; border-radius: 15px; background: {{accent}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 14px">4</span><b style="color: {{accent}}">?</b><span>Q</span></div>
+<div style="margin-top: auto; padding-top: 20px; border-top: 1px solid #E3E5DD; font-family: 'IBM Plex Sans', 'Helvetica Neue', sans-serif; font-size: 15px; line-height: 1.5; color: #3A3F48">Plain document order would go C3, Q, P, C1, leaving P and C1 until the end. That was the alternative, and it was rejected.</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 22px; padding-top: 8px">
+<span style="font-family: 'IBM Plex Mono', Menlo, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #5A606B">The rule</span>
+<div style="display: flex; gap: 18px"><span style="font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 32px; font-weight: 700; color: {{accent}}; line-height: 1">1</span><p style="margin: 0; font-size: 17px; line-height: 1.5">Open questions under the current one, in document order.</p></div>
+<div style="display: flex; gap: 18px"><span style="font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 32px; font-weight: 700; color: {{accent}}; line-height: 1">2</span><p style="margin: 0; font-size: 17px; line-height: 1.5">Then widen one level at a time. Within each parent: the siblings after you, then the siblings before you, then the parent itself.</p></div>
+<div style="display: flex; gap: 18px"><span style="font-family: 'Bricolage Grotesque', 'Helvetica Neue', sans-serif; font-size: 32px; font-weight: 700; color: {{accent}}; line-height: 1">3</span><p style="margin: 0; font-size: 17px; line-height: 1.5">At the top level, wrap round the whole file. The current question is never picked.</p></div>
+<p style="margin: 0; margin-top: auto; font-size: 14px; color: #5A606B">Covered by tests/core/test_next_open.py</p>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#3446C4","options":["#3446C4","#1E7558","#B4512A"]},"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+return { accent: this.props.accent ?? '#3446C4' };
+}
+}
+</script>
+</body>
+</html>

@@ -62,14 +62,15 @@ def resolve(ref: FileRef, base: Path) -> Path:
 
 
 def choose_editor(
-    env: Mapping[str, str], which: Callable[[str], str | None] = shutil.which
+    env: Mapping[str, str], which: Callable[[str], str | None] | None = None
 ) -> str:
     """$QQ_EDITOR, else $VISUAL, else $EDITOR, else VS Code if it's
     installed, else vi."""
     for name in ("QQ_EDITOR", "VISUAL", "EDITOR"):
         if env.get(name):
             return env[name]
-    return "code" if which("code") else "vi"
+    # shutil.which looked up now, not at import, so tests can stand in for it.
+    return "code" if (which or shutil.which)("code") else "vi"
 
 
 def windowed(editor: str) -> bool:

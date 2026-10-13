@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from rich.style import Style
@@ -451,9 +452,9 @@ def test_o_without_a_reference_says_so(notes: Path) -> None:
 def test_the_outline_shows_numbered_first_lines() -> None:
     lines = [(text.plain, item_id) for text, item_id in outline(parse(TREE))]
     assert lines == [
-        ("1 • Where should we go in June? …", "a1b2"),
+        ("1 • Where should we go in June?", "a1b2"),
         ("2   • Which stretch of coast?", "c3d4"),
-        ("3   [x] Book trains early …", "e5f6"),
+        ("3   [x] Book trains early", "e5f6"),
         ("4 • Who's coming?", "g7h8"),
     ]
 
@@ -481,15 +482,16 @@ def test_a_new_item_shows_in_the_outline_straight_away(notes: Path) -> None:
         # A blank row, selected, after a1b2 and the two items under it.
         assert app.outline.get_option_at_index(3).id == NEW_ID
         assert app.outline.highlighted == 3
-        assert prompt(app, NEW_ID) == "  • "
+        assert prompt(app, NEW_ID) == "  [ ] "  # new items get a box
         await type_text(pilot, "How long for?")
-        assert prompt(app, NEW_ID) == "  • How long for?"
+        assert prompt(app, NEW_ID) == "  [ ] How long for?"
         await type_text(pilot, "\nA week")
-        assert prompt(app, NEW_ID) == "  • How long for? …"
+        assert prompt(app, NEW_ID) == "  [ ] How long for?"
         await pilot.press("escape")
         assert app.current is not None
         assert app.outline.highlighted == 3
-        assert prompt(app, app.current.id) == "4 • How long for? …"
+        assert prompt(app, app.current.id) == "4 [ ] How long for?"
+        assert app.current.kind is Kind.TODO
 
     run(notes, scenario)
 
@@ -498,7 +500,7 @@ def test_a_new_item_above_shows_above(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
         await pilot.press("down", "alt+enter")
         assert app.outline.get_option_at_index(1).id == NEW_ID
-        assert prompt(app, NEW_ID) == "    • "  # at c3d4's depth
+        assert prompt(app, NEW_ID) == "    [ ] "  # at c3d4's depth
 
     run(notes, scenario)
 
@@ -514,7 +516,7 @@ def test_the_blank_row_goes_if_nothing_is_typed(notes: Path) -> None:
 
 def test_editing_the_first_line_updates_the_outline_as_you_type(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("down", "e")
+        await pilot.press("down", "right")
         await type_text(pilot, " exactly")
         assert prompt(app, "c3d4") == "2   • Which stretch of coast? exactly"
 
@@ -526,13 +528,13 @@ def test_editing_the_first_line_updates_the_outline_as_you_type(notes: Path) -> 
 
 def test_n_adds_at_the_bottom_and_brings_you_back(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("e", "down", "end")
+        await pilot.press("right", "down", "end")
         await type_text(pilot, " Maybe Cornwall.")
         await pilot.press("escape", "n")
         assert mode(app) == "NEW"
         assert app.editor.text == ""
         assert app.outline.get_option_at_index(4).id == NEW_ID
-        assert prompt(app, NEW_ID) == "  • "
+        assert prompt(app, NEW_ID) == "  [ ] "
         await type_text(pilot, "Buy a new tent")
         await pilot.press("escape")
         assert mode(app) == "OUTLINE"
@@ -556,46 +558,88 @@ def test_an_empty_n_adds_nothing(notes: Path) -> None:
     assert notes.read_text() == TREE
 
 
-# -- m and shift+arrows: moving items -------------------------------------------------
-
-
-def test_m_carries_an_item_through_the_outline(notes: Path) -> None:
+def test_ctrl_d_warns_then_quits(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("end", "m")  # pick up "Who's coming?"
-        assert mode(app) == "MOVE"
-        await pilot.press("up")  # into a1b2, above "Book trains early"
-        await pilot.press("up")  # above "Which stretch of coast?"
-        await pilot.press("enter")
+        await pilot.press("q")  # not a key any more
+        await pilot.press("ctrl+d")
+        assert app.is_running
+        assert any("ctrl+d again" in str(n.message) for n in app._notifications)
+        await pilot.press("ctrl+d")
+        assert not app.is_running
+
+    run(notes, scenario)
+
+
+def test_ctrl_d_quits_from_the_editor_too(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("right", "ctrl+d", "ctrl+d")
+        assert not app.is_running
+
+    run(notes, scenario)
+
+
+def test_ctrl_d_warns_again_after_a_pause(
+    notes: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = iter([100.0, 103.0])
+    fake_time = SimpleNamespace(monotonic=lambda: next(clock))
+    monkeypatch.setattr("questionqueue.tui.app.time", fake_time)
+
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("ctrl+d")
+        await pilot.press("ctrl+d")  # three seconds later: just a warning
+        assert app.is_running
+
+    run(notes, scenario)
+
+
+def test_wasd_works_as_the_arrows(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("s")
+        assert app.current_id == "c3d4"
+        await pilot.press("a")  # to the parent
+        assert app.current_id == "a1b2"
+        await pilot.press("s", "w")
+        assert app.current_id == "a1b2"
+        await pilot.press("d")  # edits
+        assert mode(app) == "EDIT"
+        await type_text(pilot, "wasd")  # types in the editor
+        assert app.editor.text_area.text.startswith("Where should we go in June?wasd")
+
+    run(notes, scenario)
+
+
+def test_shift_wasd_moves_like_shift_arrows(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("end", "W", "D")  # up into a1b2, then in under c3d4
+        assert app.file.doc.get("g7h8").parent_id == "c3d4"
+        await pilot.press("A", "S")  # back out, then down past e5f6
+        assert [c.id for c in app.file.doc.get("a1b2").children] == [
+            "c3d4",
+            "e5f6",
+            "g7h8",
+        ]
+
+    run(notes, scenario)
+
+
+# -- shift+arrows: moving items -------------------------------------------------------
+
+
+def test_shift_arrows_carry_an_item_through_the_outline(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("end", "shift+up")  # into a1b2, below "Which stretch"
+        await pilot.press("shift+up")  # above "Which stretch of coast?"
         assert mode(app) == "OUTLINE"
         assert app.current_id == "g7h8"
-
-    run(notes, scenario)
-    assert [c.id for c in on_disk(notes).get("a1b2").children] == [
-        "g7h8",
-        "c3d4",
-        "e5f6",
-    ]
-
-
-def test_m_then_tab_and_shift_tab_change_its_level(notes: Path) -> None:
-    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("down", "m", "shift+tab", "enter")
-
-    run(notes, scenario)
-    assert [c.id for c in on_disk(notes).children] == ["a1b2", "c3d4", "g7h8"]
-
-
-def test_escape_puts_a_moving_item_back(notes: Path) -> None:
-    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("end", "m", "up", "up", "escape")
-        assert mode(app) == "OUTLINE"
+        await pilot.press("shift+left")  # out again, after a1b2
         assert app.file.doc.get("g7h8").parent_id is None
 
     run(notes, scenario)
-    assert notes.read_text() == TREE
+    assert [c.id for c in on_disk(notes).children] == ["a1b2", "g7h8"]
 
 
-def test_shift_arrows_nudge_without_m(notes: Path) -> None:
+def test_shift_arrows_nudge_one_place(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
         await pilot.press("down", "shift+down")  # c3d4 past e5f6
         assert [c.id for c in app.file.doc.get("a1b2").children] == ["e5f6", "c3d4"]
@@ -606,11 +650,79 @@ def test_shift_arrows_nudge_without_m(notes: Path) -> None:
     assert notes.read_text() == TREE
 
 
-def test_tab_and_shift_tab_indent_and_outdent(notes: Path) -> None:
+def test_m_carries_an_item_until_its_dropped(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("end", "tab")
+        await pilot.press("end", "m")  # pick up "Who's coming?"
+        assert mode(app) == "MOVE"
+        await pilot.press("up", "up")  # into a1b2, above "Which stretch of coast?"
+        await pilot.press("enter")
+        assert mode(app) == "OUTLINE"
+        assert app.current_id == "g7h8"
+        await pilot.press("down")  # the cursor moves again
+        assert app.current_id == "c3d4"
+
+    run(notes, scenario)
+    assert [c.id for c in on_disk(notes).get("a1b2").children] == [
+        "g7h8",
+        "c3d4",
+        "e5f6",
+    ]
+
+
+def test_m_then_left_and_right_change_its_level(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("down", "m", "left", "m")
+
+    run(notes, scenario)
+    assert [c.id for c in on_disk(notes).children] == ["a1b2", "c3d4", "g7h8"]
+
+
+@pytest.mark.parametrize("key", ["escape", "u"])
+def test_escape_puts_a_moving_item_back(notes: Path, key: str) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("end", "shift+left")  # nowhere to go: no change
+        await pilot.press("shift+up")  # a move before picking it up
+        await pilot.press("m", "up", "right", key)
+        assert mode(app) == "OUTLINE"
+        # Back where it was picked up, not before the shift+up.
         assert app.file.doc.get("g7h8").parent_id == "a1b2"
-        await pilot.press("shift+tab")
+        await pilot.press("u")
+        assert app.file.doc.get("g7h8").parent_id is None
+
+    run(notes, scenario)
+    assert notes.read_text() == TREE
+
+
+def test_one_u_undoes_a_run_of_moves(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("end", "shift+up", "shift+up", "shift+right")
+        assert app.file.doc.get("g7h8").parent_id != None  # noqa: E711
+        await pilot.press("u")
+        assert [c.id for c in app.file.doc.children] == ["a1b2", "g7h8"]
+        assert app.file.doc.get("g7h8").parent_id is None
+
+    run(notes, scenario)
+    assert notes.read_text() == TREE
+
+
+def test_moving_another_item_is_another_undo(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("end", "shift+up")  # g7h8 into a1b2
+        await pilot.press("home", "down", "shift+down")  # c3d4 down one
+        await pilot.press("u")  # c3d4 back; g7h8 stays moved
+        assert app.file.doc.get("g7h8").parent_id == "a1b2"
+        await pilot.press("u")
+        assert app.file.doc.get("g7h8").parent_id is None
+
+    run(notes, scenario)
+    assert notes.read_text() == TREE
+
+
+def test_shift_right_and_left_indent_and_outdent(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("end", "shift+right")
+        assert app.file.doc.get("g7h8").parent_id == "a1b2"
+        await pilot.press("shift+left")
         assert app.file.doc.get("g7h8").parent_id is None
         await pilot.press("shift+right")
         assert app.current_id == "g7h8"
@@ -619,26 +731,52 @@ def test_tab_and_shift_tab_indent_and_outdent(notes: Path) -> None:
     assert "  - Who's coming?" in notes.read_text()
 
 
-# -- ← and →: folding ----------------------------------------------------------------
+# -- tab and shift+tab: folding, as in org-mode -------------------------------------------
+
+DEEP = """\
+- A <!-- q:aaaa -->
+  - A1 <!-- q:aa01 -->
+    - A1a <!-- q:a01a -->
+- B <!-- q:bbbb -->
+"""
 
 
-def test_left_folds_and_right_unfolds(notes: Path) -> None:
+def test_tab_folds_and_unfolds(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("left")
+        await pilot.press("tab")
         assert app.outline.option_count == 2
-        assert prompt(app, "a1b2") == "1 • Where should we go in June? …  ▸ 2"
+        assert prompt(app, "a1b2") == "1 • Where should we go in June?  ▸ 2"
         assert prompt(app, "g7h8").startswith("4 ")  # numbers don't change
-        await pilot.press("right")
+        await pilot.press("tab")
+        assert app.outline.option_count == 4
+        await pilot.press("end", "tab")  # nothing under it to fold
         assert app.outline.option_count == 4
 
     run(notes, scenario)
 
 
-def test_right_edits_once_nothing_is_folded(notes: Path) -> None:
+def test_shift_tab_cycles_the_whole_outline(tmp_path: Path) -> None:
+    path = tmp_path / "deep.md"
+    path.write_text(DEEP)
+
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("left")
-        await pilot.press("right")  # unfolds first
-        assert mode(app) == "OUTLINE"
+        await pilot.press("down", "down")  # on A1a
+        await pilot.press("shift+tab")  # top level only
+        assert [o.id for o in app.outline._options] == ["aaaa", "bbbb"]
+        assert app.current_id == "aaaa"  # moved off what's hidden
+        await pilot.press("shift+tab")  # one level open
+        assert [o.id for o in app.outline._options] == ["aaaa", "aa01", "bbbb"]
+        await pilot.press("shift+tab")  # everything
+        assert app.outline.option_count == 4
+        await pilot.press("shift+tab")  # and round again
+        assert app.outline.option_count == 2
+
+    run(path, scenario)
+
+
+def test_right_edits(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("tab")  # even when folded
         await pilot.press("right")
         assert mode(app) == "EDIT"
         assert app.editor.text_area.cursor_location == (
@@ -653,7 +791,9 @@ def test_left_goes_to_the_parent(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
         await pilot.press("down")
         assert app.current_id == "c3d4"
-        await pilot.press("left")  # nothing to fold, so up to the parent
+        await pilot.press("left")
+        assert app.current_id == "a1b2"
+        await pilot.press("left")  # nothing above the top level
         assert app.current_id == "a1b2"
 
     run(notes, scenario)
@@ -665,7 +805,7 @@ def test_left_goes_to_the_parent(notes: Path) -> None:
 def test_u_undoes_one_change_at_a_time(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
         await pilot.press("space")  # tick
-        await pilot.press("end", "tab")  # indent
+        await pilot.press("end", "shift+right")  # indent
         await pilot.press("x")  # delete (nothing under it, so no question)
         assert "g7h8" not in app.file.doc
         await pilot.press("u")
@@ -681,7 +821,7 @@ def test_u_undoes_one_change_at_a_time(notes: Path) -> None:
 
 def test_u_undoes_a_text_edit_and_a_new_item(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("e")
+        await pilot.press("right")
         await type_text(pilot, "!!")
         await pilot.press("escape", "enter")
         await type_text(pilot, "Extra")
@@ -710,6 +850,8 @@ def test_slash_finds_by_text(notes: Path) -> None:
 
 def test_what_the_palette_understands() -> None:
     assert parse_command(":34") == Jump(34)
+    assert parse_command(":34:12") == Jump(34, 12)
+    assert parse_command(":34:") == Jump(34, None)
     assert parse_command(":") == Jump(None)
     assert isinstance(parse_command(":x"), Problem)
     assert parse_command("tent") == Find("tent", everywhere=True)
@@ -741,7 +883,7 @@ def test_ctrl_p_in_the_outline_goes_to_an_item(notes: Path) -> None:
 
 def test_slash_in_the_editor_finds_a_line_in_this_item(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("e", "ctrl+p")
+        await pilot.press("right", "ctrl+p")
         await type_text(pilot, "/sea")
         await pilot.press("enter")
         assert app.current_id == "a1b2"
@@ -753,7 +895,7 @@ def test_slash_in_the_editor_finds_a_line_in_this_item(notes: Path) -> None:
 
 def test_double_slash_in_the_editor_finds_any_item(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("e", "ctrl+p")
+        await pilot.press("right", "ctrl+p")
         await type_text(pilot, "//march")
         await pilot.press("enter")
         assert app.current_id == "e5f6"
@@ -763,7 +905,7 @@ def test_double_slash_in_the_editor_finds_any_item(notes: Path) -> None:
 
 def test_colon_in_the_editor_goes_to_a_line(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("e", "ctrl+p")
+        await pilot.press("right", "ctrl+p")
         await type_text(pilot, ":2")
         await pilot.press("enter")
         assert app.editor.text_area.cursor_location == (1, 0)
@@ -773,7 +915,7 @@ def test_colon_in_the_editor_goes_to_a_line(notes: Path) -> None:
 
 def test_replace_in_the_editor_is_this_item_only(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("e", "ctrl+p")
+        await pilot.press("right", "ctrl+p")
         await type_text(pilot, "/e/E/g")
         hint = str(app.screen.query_one("#palette-hint").render())
         assert "replaces in 1 item" in hint
@@ -801,7 +943,7 @@ def test_replace_in_the_outline_is_every_item_and_u_undoes_it(notes: Path) -> No
 
 def test_without_g_only_the_first_match_on_each_line(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("e", "ctrl+p")
+        await pilot.press("right", "ctrl+p")
         await type_text(pilot, "/e/E/")
         await pilot.press("enter")
 
@@ -835,9 +977,26 @@ def test_question_mark_shows_every_key(notes: Path) -> None:
     run(notes, scenario)
 
 
+def test_colon_item_colon_line_edits_at_that_line(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("colon", "1", "colon", "2", "enter")
+        assert app.current_id == "a1b2"
+        assert mode(app) == "EDIT"
+        assert app.editor.text_area.cursor_location == (1, 0)
+
+    run(notes, scenario)
+
+
+def test_the_editor_numbers_its_lines(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        assert app.editor.text_area.show_line_numbers
+
+    run(notes, scenario)
+
+
 def test_colon_goes_to_an_item_folded_out_of_sight(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("left")  # fold a1b2, hiding item 3
+        await pilot.press("tab")  # fold a1b2, hiding item 3
         await pilot.press("colon", "3", "enter")
         assert app.current_id == "e5f6"
         assert app.outline.option_count == 4  # unfolded to show it

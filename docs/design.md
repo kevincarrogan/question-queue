@@ -55,6 +55,7 @@ src/questionqueue/
     render.py       how an item is drawn in the outline
     modals.py       single-key choices, the palette, the key list
     keys.py         alt+enter support
+    highlight.py    inline markdown and fenced code colouring
     app.tcss
 tests/
   core/             format, ops, step, replace, ticks, next_open, store,
@@ -68,7 +69,7 @@ tests/
 returns items, never positions in the file, so a tool-calling LLM can drive
 it as-is.
 
-Runtime dependencies are Textual and watchfiles. Dev dependencies are pytest,
+Runtime dependencies are Textual (with its `syntax` extra, for tree-sitter) and watchfiles. Dev dependencies are pytest,
 ruff, mypy (strict) and pre-commit. Pilot tests run Textual's `run_test()`
 inside `asyncio.run()`, which avoids needing pytest-asyncio.
 
@@ -182,7 +183,7 @@ your back.
 | `reorder(id, index)` | Move among its own siblings. |
 | `indent(id)` / `outdent(id)` | Under the previous sibling / after the parent. |
 | `visible(folded=())` | Items as the outline shows them, leaving out what's under folded items. |
-| `step(id, down, folded=())` | Move one row up or down the outline as shown, so an item can travel into and out of branches. Down past a row with children showing makes it that row's first child. Raises `InvalidMove` at either end. This is what `m` and `shift+↑↓` use. |
+| `step(id, down, folded=())` | Move one row up or down the outline as shown, so an item can travel into and out of branches. Down past a row with children showing makes it that row's first child. Raises `InvalidMove` at either end. This is what `shift+↑↓` uses. |
 | `replace(old, new, ids, every=False, ignore_case=False)` | Literal replace in each item's text, like vim's `s/old/new/`: the first match on each line, or every one with `every` (vim's g), ignoring case with `ignore_case` (i). An item whose first line would end up blank is left alone. `replaced(text, …)` is the same on a string, for previews. |
 | `delete(id)` | Remove the item, its body, everything under it and any lines nested under it. |
 | `trail(id)` | Ancestors, root-most first. |
@@ -295,9 +296,11 @@ The TUI has been reshaped by using it:
    model and the TUI were rebuilt around that.
 7. **Settling the keys by use:** `ctrl+j` jotting gave way to `enter` (add
    here), `n` (add at the bottom) and `m` (pick up and carry), with undo
-   behind all of them. The arrows became folding and `→` editing, because
-   that's what a hand reaches for. `/` and `:` open a vim-like palette.
-   Ticks cascade, and references can be clicked.
+   behind all of them. `→` edits, because that's what a hand reaches for,
+   so folding moved to `tab` and `shift+tab`, as in org-mode. WASD doubles
+   as the arrows, `ctrl+d` twice quits, `/` and `:` open a vim-like
+   palette, ticks cascade, and references can be clicked. The editor lost
+   its help text and gained line numbers and markdown colouring.
 
 The earlier versions are in git history and on the project canvas.
 
@@ -305,33 +308,45 @@ The earlier versions are in git history and on the project canvas.
 
 - **The outline** (`tui/outline.py`, an `OptionList`) shows every item by its
   subject, indented by depth, after its number in a dim gutter, with a box if
-  it has one (`[-]` when partly done), `…` when there's more to it than the
-  subject, and `▸ N` when N items are folded under it. Numbers follow the
+  it has one (`[-]` when partly done), and `▸ N` when N items are folded under it. Numbers follow the
   file, so folding doesn't renumber anything. Prose and other raw lines
   aren't shown. It's for moving and arranging; its keys are commands and
   never type.
 - **The editor** (`tui/editor.py`) is the selected item's whole text in one
-  text area: the first line is the subject, the rest is the body. It flips to
-  a blank item when adding, and the outline shows a blank row where it will
-  go, filling in live as you type the first line.
+  text area, with numbered lines and nothing else in the pane: the first
+  line is the subject (in bold), the rest is the body. It flips to a blank
+  item when adding, and the outline shows a blank row, with its box, where
+  it will go, filling in live as you type the first line.
+- **Markdown is coloured as you type.** The text area's markdown mode
+  (`textual[syntax]`, which brings tree-sitter) colours headings, list
+  markers and code blocks, but not inline markup or the code inside a fence.
+  `tui/highlight.py` adds those: `**bold**`, `*italic*`, `` `code` ``, links
+  and file references by pattern, and fenced code by parsing it with its
+  language's grammar and Textual's highlight query, offset to the fence's
+  rows. Highlights are byte columns, as TextArea keeps them.
 - **The mode is always visible:** the focused pane has the bright border, and
   the key bar leads with OUTLINE, EDIT, NEW or MOVE and lists that mode's
   keys. Below 90 columns the panes stack (`HORIZONTAL_BREAKPOINTS`).
 
 ### Keys
 
+`w` `a` `s` `d` are the arrow keys in the outline, and `W` `A` `S` `D` the
+shift+arrows, for terminals that don't send shift with the arrows.
+
 | In the outline | Does |
 | --- | --- |
 | `↑` `↓` / `j` `k` | Move. The editor shows the selected item. |
-| `←` | Fold; if there's nothing to fold, go to the parent. |
-| `→` | Unfold; if there's nothing folded, edit the item. The editor is the pane to the right, and that's where a hand goes. (`↓` already reaches the first child.) |
-| `e` / `ctrl+n` | Edit the selected item, cursor at the end of its first line. |
-| `enter` | New item here, after this one (and its children). |
+| `←` | Go to the parent. |
+| `→` | Edit the item, cursor at the end of its first line. The editor is the pane to the right, and that's where a hand goes. |
+| `ctrl+n` | Edit the selected item, like `→`. |
+| `tab` | Fold or unfold the item, as in org-mode. |
+| `shift+tab` | The whole outline in turn: top level only, one level open, all open. If what was selected is hidden, the selection moves to the item it's folded under. |
+| `enter` | New item here, after this one (and its children). New items get a box. |
 | `alt+enter` | New item above. (`shift+enter` too, where the terminal sends it as its own key or as ESC + enter.) |
 | `n` | New top-level item at the bottom; when you're done you're back where you were. |
 | `m` | Pick the item up and carry it (below). |
 | `shift+↑` / `shift+↓` | Move the item one row without picking it up. |
-| `tab` / `shift+tab` | Indent / outdent (`shift+→` / `shift+←` too). |
+| `shift+←` / `shift+→` | Out / in a level. |
 | `space` | Tick or untick, cascading (see ticks, above). |
 | `t` | Give the item a box, or take it away. |
 | `x` | Delete; asks first if it has a body or items under it. |
@@ -339,18 +354,17 @@ The earlier versions are in git history and on the project canvas.
 | `/` `:` | Open the palette with that already typed. |
 | `o` / click | Open the file reference in the item. |
 | `?` | Every key. |
-| `q` | Quit. |
 
 | In the editor | Does |
 | --- | --- |
-| typing | `enter` is a new line, `tab` indents (for code). Saves as you type; a blank first line isn't saved. |
+| typing | `enter` is a new line, `tab` indents (for code). Saves as you type; a blank first line isn't saved, and says so once. |
 | `esc` / `ctrl+n` | Back to the outline. A new item is added at that point, unless it's empty. |
 | `ctrl+o` | Open the file reference on the cursor's line, else the first. |
 
 | Anywhere | Does |
 | --- | --- |
 | `ctrl+p` | The palette (below). Cmd+P never reaches a terminal app. |
-| `ctrl+q` | Quit. |
+| `ctrl+d` `ctrl+d` | Quit, as in Claude Code: the first press warns, a second within two seconds quits. It takes over the editor's delete-forward. `ctrl+q` quits straight away. |
 
 Textual reports ESC + carriage return as plain `enter`, dropping the alt,
 so `tui/keys.py` wraps its key parser to report `alt+enter` instead
@@ -364,8 +378,7 @@ bar fits in 80 columns.
 
 ### Adding and moving
 
-Capturing a thought without losing your place is what matters most, and it's
-three keys:
+Capturing a thought without losing your place is what matters most:
 
 - **`enter` adds where you are**, as the next sibling. A blank row appears in
   the outline straight away and fills in as you type; `esc` adds it (or adds
@@ -374,17 +387,24 @@ three keys:
   nothing to do with what you're on. Afterwards the selection goes back to
   where it was.
 - **`m` picks an item up** (MOVE, in blue). `↑` `↓` carry it through the
-  outline as it's shown, into and out of branches (`ops.step`); `tab` /
-  `shift+tab` change its level; `enter` drops it; `esc` puts it back exactly
-  where it was. So anything can be added roughly and placed later.
+  outline as it's shown, into and out of branches (`ops.step`); `←` `→`
+  change its level; `m` or `enter` drops it; `esc` or `u` puts it back where
+  it was picked up. So anything can be added roughly and placed later.
+- **shift and the arrows** do the same one step at a time, with no mode.
+  Terminal.app doesn't send shift with ↑ and ↓ until you map them (Settings
+  → Profiles → Keyboard: `\033[1;2A` and `\033[1;2B`), which is why `m`
+  came back after being dropped for shift+arrows; `W` `S` work everywhere.
 
 ### Undo
 
 `u` undoes structural changes and edits one at a time. Before each change the
 app pushes the serialised document onto a stack (200 deep) and undo parses
 the last one back, so IDs survive. Editing pushes once per visit to the
-editor, only if the text changed. Picking an item up counts as one change, and
-`esc` while carrying is an undo. A reload from disk clears the stack.
+editor, only if the text changed. A run of moves of the same item, with
+nothing in between, is one change, so `u` puts it back where it started
+(`undo_count` tells "straight after" apart). Picking an item up with `m`
+starts a fresh run, so putting it back undoes only what happened since. A reload from disk clears the
+stack.
 
 ### The palette
 
@@ -398,6 +418,7 @@ depends on the pane it was opened from.
 | `/words` | find items | find lines in this item |
 | `//words` | find items | find items |
 | `:34` | item 34 (unfolding to reach it) | line 34 |
+| `:34:12` | edit item 34 at line 12 | the same |
 | `/old/new/` | replace in every item | replace in this item |
 | `//old/new/` | replace in every item | replace in every item |
 
@@ -446,8 +467,8 @@ many; with none, `enter` beeps. A replace is one undo.
   editing and switching back, including with `→`; enter as a new line in the
   editor; saving when typing pauses; a blank first line not saved; adding
   below, above, at the bottom and with a body, the blank row filling in, and
-  adding nothing; the guide in an empty file; picking up, carrying, dropping
-  and putting back; nudging, indent and outdent; folding; undo; ticking, `[-]`
+  adding nothing; the guide in an empty file; carrying with shift+arrows and
+  undoing a run of moves in one step; indent and outdent; folding; undo; ticking, `[-]`
   and the box; deleting with and without asking; the palette in both panes,
   replace and its flags; the which-queue choice; reloads and the conflict
   dialog; opening references with keys and with a click; and how the outline

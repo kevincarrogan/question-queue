@@ -76,6 +76,7 @@ class Find:
 @dataclass(frozen=True)
 class Jump:
     number: int | None  # None while only `:` is typed
+    line: int | None = None  # :34:12, line 12 of item 34
 
 
 @dataclass(frozen=True)
@@ -102,16 +103,20 @@ REPLACE_RE = re.compile(
 )
 
 
+# :34, or :34:12 for line 12 of item 34.
+JUMP_RE = re.compile(r"^:\s*(?P<number>\d*)\s*(?::\s*(?P<line>\d*))?\s*$")
+
+
 def parse_command(query: str) -> Command:
-    """`:34` jump; `/words` or `//words` find; `/old/new/` or `//old/new/`
+    """`:34` jump (`:34:12` to a line of it); `/words` or `//words` find; `/old/new/` or `//old/new/`
     replace, with g and i flags; anything else finds in every item."""
     if query.startswith(":"):
-        number = query[1:].strip()
-        if not number:
-            return Jump(None)
-        if not number.isdigit():
-            return Problem("After : type a number")
-        return Jump(int(number))
+        m = JUMP_RE.match(query)
+        if m is None:
+            return Problem("After : type a number, or item:line like :34:12")
+        number = int(m["number"]) if m["number"] else None
+        line = int(m["line"]) if m["line"] else None
+        return Jump(number, line)
     if query.startswith("//"):
         everywhere, rest = True, query[2:]
     elif query.startswith("/"):
@@ -156,6 +161,7 @@ def by_number(numbers: list[int], number: int | None) -> list[int]:
 @dataclass(frozen=True)
 class GoToItem:
     item_id: str
+    line: int | None = None  # and into the editor at this line
 
 
 @dataclass(frozen=True)
@@ -167,8 +173,9 @@ class GoToLine:
 type Choice = GoToItem | GoToLine | Replace
 
 HINTS: dict[Pane, str] = {
-    "outline": "/words find    :34 item 34    /old/new/ replace in every item (g every match, i any case)",
-    "editor": "/words in this item    //words everywhere    :12 line 12    "
+    "outline": "/words find    :34 item 34    :34:12 its line 12    "
+    "/old/new/ replace in every item (g every match, i any case)",
+    "editor": "/words in this item    //words everywhere    :12 line 12    :34:12 item 34's line 12    "
     "/old/new/ replace here    //old/new/ everywhere",
 }
 
@@ -225,9 +232,9 @@ class PaletteModal(ModalScreen[Choice | None]):
         match command:
             case Problem(message):
                 hint = message
-            case Jump(number) if lines_here:
+            case Jump(number, None) if lines_here:
                 options = self.line_options(by_number(self.line_numbers(), number))
-            case Jump(number):
+            case Jump(number, _):
                 numbers = by_number([e.number for e in self.entries], number)
                 by_n = {e.number: e for e in self.entries}
                 options = [self.item_option(by_n[n]) for n in numbers]
@@ -350,7 +357,8 @@ class PaletteModal(ModalScreen[Choice | None]):
             row, column = rest.split(":")
             self.dismiss(GoToLine(int(row), int(column)))
         else:
-            self.dismiss(GoToItem(rest))
+            line = self.command.line if isinstance(self.command, Jump) else None
+            self.dismiss(GoToItem(rest, line))
 
     def action_move(self, delta: int) -> None:
         results = self.query_one(OptionList)
@@ -363,30 +371,34 @@ class PaletteModal(ModalScreen[Choice | None]):
 
 
 KEYS = """\
-In the outline (keys are commands, nothing types)
+In the outline (keys are commands, nothing types; w a s d are the arrows)
   ↑ ↓  j k        move between items
-  ←               fold; if there's nothing to fold, to the parent
-  →               unfold; if there's nothing folded, edit it
+  ←               to the parent
+  →  ctrl+n       edit the selected item
+  tab             fold or unfold it
+  shift+tab       everything: top level only → one level open → all open
   enter           new item here          alt+enter   new item above
   n               new item at the bottom, then back where you were
-  → e  ctrl+n     edit the selected item
-  m               pick it up: ↑ ↓ carry it, tab / shift+tab change its level,
-                  enter drops it, esc puts it back
-  shift+↑ ↓       move it one place
-  tab shift+tab   indent / outdent
+  m               pick it up: ↑ ↓ carry it, ← → out / in a level,
+                  m or enter drops it, esc puts it back
+  shift+↑ ↓       move it (and what's under it) without picking it up
+  shift+← →       out / in a level
   space           tick or untick, and the boxes under it; [-] is partly done
   t               add or remove the box
-  x               delete                    u   undo
-  ctrl+p  /  :    the palette: /words find, :34 item 34,
+  x               delete                    u   undo (a run of moves is one)
+  ctrl+p  /  :    the palette: /words find, :34 item 34, :34:12 its line 12,
                   /old/new/ replace in every item (g every match, i any case)
   o  click        open the file:line in the item in your editor
-  q               quit
 
 In the editor (where you type)
   the first line is what the outline shows; enter is a new line
   esc  ctrl+n     back to the outline       ctrl+o  open the file:line here
   ctrl+p          /words in this item, //words in every item, :12 line 12,
-                  /old/new/ replace here, //old/new/ in every item"""
+                  :34:12 line 12 of item 34,
+                  /old/new/ replace here, //old/new/ in every item
+
+Anywhere
+  ctrl+d ctrl+d   quit (the first one warns)"""
 
 
 class HelpModal(ModalScreen[None]):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
@@ -58,6 +59,9 @@ keys.install()
 # How long typing has to pause before it's saved.
 SAVE_DELAY = 1.0
 
+# ctrl+d twice within this many seconds quits, as in Claude Code.
+QUIT_WINDOW = 2.0
+
 # How many changes `u` can undo.
 UNDO_LIMIT = 200
 
@@ -71,7 +75,7 @@ type Mode = Literal["OUTLINE", "EDIT", "NEW", "MOVE"]
 KEY_HINTS: dict[Mode, list[tuple[str, str]]] = {
     "OUTLINE": [
         ("enter", "new"),
-        ("→ e", "edit"),
+        ("→", "edit"),
         ("m", "move"),
         ("space", "tick"),
         ("u", "undo"),
@@ -89,9 +93,8 @@ KEY_HINTS: dict[Mode, list[tuple[str, str]]] = {
     ],
     "MOVE": [
         ("↑↓", "carry it"),
-        ("tab", "in"),
-        ("shift+tab", "out"),
-        ("enter", "drop it here"),
+        ("←→", "out / in"),
+        ("m enter", "drop it"),
         ("esc", "put it back"),
     ],
 }
@@ -116,6 +119,8 @@ class QQApp(App[None]):
         # VS Code's quick open is cmd+p, which terminals can't receive; this is
         # its Linux and Windows key. A terminal can map cmd+p to send it.
         Binding("ctrl+p", "find", show=False, priority=True),
+        # Over the editor's own ctrl+d (delete forward), so it works anywhere.
+        Binding("ctrl+d", "quit_twice", show=False, priority=True),
         Binding("ctrl+q", "quit", show=False, priority=True),
     ]
 
@@ -132,8 +137,17 @@ class QQApp(App[None]):
         self.folded: set[str] = set()
         # The file's text before each change, newest last, for `u`.
         self.undo_stack: list[str] = []
-        # An item picked up with `m`.
+        # Counts changes to the undo stack. With it, the item last moved with
+        # shift+arrows: moving it again, straight after, is the same undo step.
+        self.undo_count = 0
+        # Whether we've said a blank first line can't be saved, so it's said once.
+        self.warned_blank = False
+        # When ctrl+d was last pressed.
+        self.quit_pressed = -QUIT_WINDOW
+        self.carried: tuple[str, int] | None = None
+        # An item picked up with `m`, and the undo count when it was.
         self.moving_id: str | None = None
+        self.picked_at = 0
         # Where to go back to after `n`.
         self.return_focus: Widget | None = None
         self.return_cursor: tuple[int, int] | None = None
@@ -228,7 +242,7 @@ class QQApp(App[None]):
         self.folded &= self.file.doc.ids()
         self.outline.show_doc(
             self.file.doc,
-            self.moving_id or self.current_id,
+            self.current_id,
             folded=self.folded,
             new_row=self.new_row() if self.editor.adding else None,
         )
@@ -257,16 +271,18 @@ class QQApp(App[None]):
 
     # -- undo -------------------------------------------------------------------
 
-    def snapshot(self) -> None:
-        """Remember the file as it is, before a change."""
-        self.undo_stack.append(serialise(self.file.doc))
+    def remember(self, before: str) -> None:
+        """Remember the file as it was before a change, for `u`."""
+        self.undo_stack.append(before)
         del self.undo_stack[:-UNDO_LIMIT]
+        self.undo_count += 1
 
     def undo(self) -> None:
         if not self.undo_stack:
             self.notify("Nothing to undo", timeout=1.5)
             return
         self.file.doc = parse(self.undo_stack.pop())
+        self.undo_count += 1
         self.autosave()
         if self.current is None:
             first = next(self.file.doc.walk(), None)
@@ -303,13 +319,16 @@ class QQApp(App[None]):
         try:
             ops.set_text(self.file.doc, item.id, editor.text)
         except ValueError:
-            editor.head(
-                "The first line is what the outline shows, so it can't be blank."
-            )
+            if not self.warned_blank:
+                self.warned_blank = True
+                self.notify(
+                    "The first line is what the outline shows, so it can't be blank.",
+                    severity="warning",
+                    timeout=3,
+                )
             return
-        self.undo_stack.append(before)
-        del self.undo_stack[:-UNDO_LIMIT]
-        editor.head("")
+        self.warned_blank = False
+        self.remember(before)
 
     def autosave(self) -> None:
         try:
@@ -329,13 +348,13 @@ class QQApp(App[None]):
     def edited(self) -> None:
         # The outline follows the first line as it's typed.
         if self.editor.adding:
-            first, _, rest = self.editor.text.partition("\n")
+            first = self.editor.text.partition("\n")[0]
             self.outline.redraw_line(
                 NEW_ID,
                 draw_line(
                     self.new_row()[1],
                     first,
-                    more=bool(rest.strip()),
+                    box="[ ]",
                     width=gutter_width(self.file.doc),
                 ),
             )
@@ -413,13 +432,22 @@ class QQApp(App[None]):
             case "edit" if item is not None:
                 self.edit_current()
             case "left" if item is not None:
-                self.left(item)
+                if item.parent_id is None:
+                    self.bell()
+                else:
+                    self.select(item.parent_id)
             case "right" if item is not None:
-                self.right(item)
+                self.edit_current()
+            case "fold" if item is not None:
+                self.fold(item)
+            case "fold_all":
+                self.fold_all()
             case "nudge_up" | "nudge_down" if item is not None:
-                self.change(lambda: self.step(item, down=event.action == "nudge_down"))
+                down = event.action == "nudge_down"
+                self.change(lambda: self.step(item, down=down), carrying=item.id)
             case "indent" | "outdent" if item is not None:
-                self.change(lambda: self.shift(item, outdent=event.action == "outdent"))
+                outdent = event.action == "outdent"
+                self.change(lambda: self.shift(item, outdent=outdent), carrying=item.id)
             case "move" if item is not None:
                 self.pick_up(item)
             case "tick" if item is not None:
@@ -443,12 +471,15 @@ class QQApp(App[None]):
                 self.push_screen(HelpModal())
             case "open_ref":
                 self.action_open_ref()
-            case "quit":
-                self.call_next(self.action_quit)
 
-    def change(self, apply: Callable[[], object]) -> None:
+    def change(
+        self, apply: Callable[[], object], *, carrying: str | None = None
+    ) -> None:
         """Make a structural change: remember the file first, so `u` can undo
-        it, then save and redraw. A move with nowhere to go just beeps."""
+        it, then save and redraw. A move with nowhere to go just beeps.
+
+        Moves of the item `carrying`, one after another, are one undo step,
+        so `u` puts it back where it started."""
         self.commit_edits()
         before = serialise(self.file.doc)
         try:
@@ -458,8 +489,9 @@ class QQApp(App[None]):
             return
         if serialise(self.file.doc) == before:
             return
-        self.undo_stack.append(before)
-        del self.undo_stack[:-UNDO_LIMIT]
+        if carrying is None or self.carried != (carrying, self.undo_count):
+            self.remember(before)
+        self.carried = None if carrying is None else (carrying, self.undo_count)
         self.autosave()
         self.refresh_outline()
         self.editor.show(self.current)
@@ -475,24 +507,36 @@ class QQApp(App[None]):
             # Tucked under a folded item, it would vanish: open that up.
             self.folded.discard(item.parent_id or "")
 
-    def left(self, item: Item) -> None:
-        """Fold this item, or if it's folded or has nothing under it, go to its parent."""
-        if item.children and item.id not in self.folded:
-            self.folded.add(item.id)
-            self.refresh_outline()
-        elif item.parent_id is not None:
-            self.select(item.parent_id)
-        else:
+    def fold(self, item: Item) -> None:
+        """tab, as in org-mode: fold this item, or unfold it."""
+        if not item.children:
             self.bell()
+            return
+        self.folded ^= {item.id}
+        self.refresh_outline()
 
-    def right(self, item: Item) -> None:
-        """Unfold this item, or if there's nothing folded, edit it: the
-        editor is the pane to the right. (↓ already goes to the first child.)"""
-        if item.children and item.id in self.folded:
-            self.folded.discard(item.id)
-            self.refresh_outline()
+    def fold_all(self) -> None:
+        """shift+tab, as in org-mode: the whole outline goes from top level
+        only, to one level open, to everything open, and round again."""
+        parents = [item for item in self.file.doc.walk() if item.children]
+        stages = [
+            {item.id for item in parents},
+            {item.id for item in parents if item.depth >= 1},
+            set(),
+        ]
+        stages = [stage for i, stage in enumerate(stages) if stage not in stages[:i]]
+        if self.folded in stages:
+            self.folded = stages[(stages.index(self.folded) + 1) % len(stages)]
         else:
-            self.edit_current()
+            self.folded = stages[0]
+        # Keep the selection on something that's showing.
+        item = self.current
+        if item is not None:
+            hidden = [a for a in item.ancestors() if a.id in self.folded]
+            if hidden:
+                self.current_id = hidden[0].id
+                self.editor.show(self.current)
+        self.refresh_outline()
 
     def delete(self, item: Item) -> None:
         def confirmed(choice: str | None) -> None:
@@ -541,11 +585,15 @@ class QQApp(App[None]):
 
         def chosen(choice: Choice | None) -> None:
             match choice:
-                case GoToItem(item_id) if item_id in self.file.doc:
+                case GoToItem(item_id, line) if item_id in self.file.doc:
                     # Open up whatever it's folded inside.
                     for ancestor in self.file.doc.get(item_id).ancestors():
                         self.folded.discard(ancestor.id)
                     self.select(item_id)
+                    if line is not None:
+                        self.edit_current()
+                        last = area.document.line_count - 1
+                        area.move_cursor((min(line - 1, last), 0))
                 case GoToLine(row, column):
                     area.focus()
                     area.move_cursor((row, column))
@@ -626,19 +674,18 @@ class QQApp(App[None]):
         before = serialise(doc)
         try:
             if anchor is None or self.editor.place == "end":
-                item = ops.add(doc, text)
+                item = ops.add(doc, text, kind=Kind.TODO)
             elif self.editor.place == "under":
-                item = ops.add(doc, text, parent_id=anchor.id)
+                item = ops.add(doc, text, parent_id=anchor.id, kind=Kind.TODO)
             else:
-                item = ops.add(doc, text, as_sibling_of=anchor.id)
+                item = ops.add(doc, text, as_sibling_of=anchor.id, kind=Kind.TODO)
                 if self.editor.place == "before":
                     ops.reorder(doc, item.id, anchor.parent.children.index(anchor))
         except ValueError:
             # Nothing typed (or only blank lines): no item, and the blank row goes.
             item = None
         if item is not None:
-            self.undo_stack.append(before)
-            del self.undo_stack[:-UNDO_LIMIT]
+            self.remember(before)
             self.autosave()
         if returning or item is None:
             self.back_where_you_were()
@@ -664,52 +711,45 @@ class QQApp(App[None]):
             self.outline.focus()
         self.refresh_keys()
 
-    # -- moving -----------------------------------------------------------------------
+    # -- m: moving --------------------------------------------------------------------
 
     def pick_up(self, item: Item) -> None:
-        """m: carry an item (and everything under it) with the arrow keys."""
+        """m: the arrows carry the item (and everything under it) until it's dropped."""
         self.commit_edits()
-        self.snapshot()
         self.moving_id = item.id
+        self.carried = None  # its moves from here on are one undo step of their own
+        self.picked_at = self.undo_count
         self.refresh_outline()
 
     def move_key(self, action: str) -> None:
         assert self.moving_id is not None
         item = self.file.doc.get(self.moving_id)
-        try:
-            match action:
-                case "nudge_up" | "nudge_down":
-                    self.step(item, down=action == "nudge_down")
-                case "indent" | "outdent":
-                    self.shift(item, outdent=action == "outdent")
-                case "new_here" | "move":
-                    self.drop()
-                    return
-                case "escape":
-                    self.put_back()
-                    return
-                case _:
-                    self.bell()
-                    return
-        except InvalidMove:
-            self.bell()
-            return
-        self.autosave()
-        self.refresh_outline()
+        match action:
+            case "nudge_up" | "nudge_down":
+                down = action == "nudge_down"
+                self.change(lambda: self.step(item, down=down), carrying=item.id)
+            case "outdent" | "left":
+                self.change(lambda: self.shift(item, outdent=True), carrying=item.id)
+            case "indent" | "right":
+                self.change(lambda: self.shift(item, outdent=False), carrying=item.id)
+            case "move" | "new_here":
+                self.drop()
+            case "escape" | "undo":
+                self.put_back()
+            case _:
+                self.bell()
 
     def drop(self) -> None:
-        moved = self.moving_id
         self.moving_id = None
-        if self.undo_stack and self.undo_stack[-1] == serialise(self.file.doc):
-            self.undo_stack.pop()  # it didn't move after all
-        self.current_id = moved
         self.refresh_outline()
-        self.editor.show(self.current)
 
     def put_back(self) -> None:
-        """esc while moving: back where it was picked up from."""
+        """esc while moving: back where it was picked up."""
         self.moving_id = None
-        self.undo()
+        if self.undo_count != self.picked_at:
+            self.undo()
+        else:
+            self.refresh_outline()
 
     # -- opening references and quitting ------------------------------------------
 
@@ -749,14 +789,22 @@ class QQApp(App[None]):
         except OSError as error:
             self.notify(f"Couldn't run {editor}: {error}", severity="error")
 
+    async def action_quit_twice(self) -> None:
+        """ctrl+d: the first press warns, a second straight after quits."""
+        now = time.monotonic()
+        if now - self.quit_pressed < QUIT_WINDOW:
+            await self.action_quit()
+            return
+        self.quit_pressed = now
+        self.notify("Press ctrl+d again to quit", timeout=QUIT_WINDOW)
+
     async def action_quit(self) -> None:
         if not self.loaded:
             self.exit()
             return
         if self.editor.adding:
             self.finish_new()
-        if self.moving_id is not None:
-            self.drop()
+        self.moving_id = None
         self.commit_edits()
         if self.file.unsaved:
             try:
@@ -801,11 +849,13 @@ class QQApp(App[None]):
     def reload_from_disk(self) -> None:
         self.file.reload()
         self.undo_stack.clear()
+        self.undo_count += 1
+        if self.moving_id not in self.file.doc:
+            self.moving_id = None
+        self.picked_at = self.undo_count
         if self.current_id not in self.file.doc:
             first = next(self.file.doc.walk(), None)
             self.current_id = first.id if first else None
-        if self.moving_id not in self.file.doc:
-            self.moving_id = None
         self.editor.shown_id = None
         self.refresh_outline()
         self.editor.show(self.current)

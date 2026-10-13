@@ -22,29 +22,32 @@ GUIDE = """\
 Nothing here yet. Press enter to write your first item.
 
 This side is the outline: you move around it and arrange it, and keys
-are commands. The other side is where you write; → or e goes there,
+are commands. The other side is where you write; → goes there,
 and esc comes back.
 
 enter adds an item where you are, n adds one at the bottom, m picks one
-up to move it, and u undoes. ← folds, and → unfolds."""
+up to move it, and u undoes. tab folds, and shift+tab folds everything."""
 
 
 class OutlineList(OptionList):
     BINDINGS = [
-        Binding("j", "cursor_down", show=False),
-        Binding("k", "cursor_up", show=False),
-        Binding("left", "request('left')", show=False),
-        Binding("right", "request('right')", show=False),
-        Binding("shift+up", "request('nudge_up')", show=False),
-        Binding("shift+down", "request('nudge_down')", show=False),
-        Binding("tab,shift+right", "request('indent')", show=False),
-        Binding("shift+tab,shift+left", "request('outdent')", show=False),
+        # WASD works as the arrows, with shift as shift+arrows; j and k too.
+        Binding("w,k", "cursor_up", show=False),
+        Binding("s,j", "cursor_down", show=False),
+        Binding("left,a", "request('left')", show=False),
+        Binding("right,d", "request('right')", show=False),
+        Binding("shift+up,W", "request('nudge_up')", show=False),
+        Binding("shift+down,S", "request('nudge_down')", show=False),
+        Binding("shift+right,D", "request('indent')", show=False),
+        Binding("shift+left,A", "request('outdent')", show=False),
+        # Folding, as in org-mode.
+        Binding("tab", "request('fold')", show=False),
+        Binding("shift+tab", "request('fold_all')", show=False),
         Binding("enter", "request('new_here')", show=False),
         # alt+enter reaches us everywhere (see keys.py); shift+enter only
         # where the terminal reports it as its own key.
         Binding("alt+enter,shift+enter", "request('new_above')", show=False),
         Binding("n", "request('new_at_bottom')", show=False),
-        Binding("e,i", "request('edit')", show=False),
         Binding("m", "request('move')", show=False),
         Binding("space", "request('tick')", show=False),
         Binding("t", "request('toggle_box')", show=False),
@@ -54,7 +57,6 @@ class OutlineList(OptionList):
         Binding("colon", "request('goto')", show=False),
         Binding("question_mark", "request('help')", show=False),
         Binding("o", "request('open_ref')", show=False),
-        Binding("q", "request('quit')", show=False),
         Binding("escape", "request('escape')", show=False),
     ]
 
@@ -75,13 +77,7 @@ class OutlineList(OptionList):
     def action_request(self, action: str) -> None:
         self.post_message(self.Request(action))
 
-    async def _on_click(self, event: events.Click) -> None:
-        # OptionList selects the row as well, after this.
-        ref = event.style.meta.get("ref")
-        if ref is not None:
-            self.post_message(self.OpenRef(ref))
-
-    # While an item is picked up, up and down carry it, not the cursor.
+    # While an item is picked up with m, up and down carry it, not the cursor.
 
     def action_cursor_up(self) -> None:
         if self.has_class("-moving"):
@@ -94,6 +90,12 @@ class OutlineList(OptionList):
             self.action_request("nudge_down")
         else:
             super().action_cursor_down()
+
+    async def _on_click(self, event: events.Click) -> None:
+        # OptionList selects the row as well, after this.
+        ref = event.style.meta.get("ref")
+        if ref is not None:
+            self.post_message(self.OpenRef(ref))
 
     def show_doc(
         self,
@@ -108,7 +110,8 @@ class OutlineList(OptionList):
         options = [Option(text, id=item_id) for text, item_id in outline(doc, folded)]
         if new_row is not None:
             position, depth = new_row
-            blank = draw_line(depth, "", width=gutter_width(doc))
+            # New items get a box.
+            blank = draw_line(depth, "", box="[ ]", width=gutter_width(doc))
             options.insert(position, Option(blank, id=NEW_ID))
             selected_id = NEW_ID
         if not options:

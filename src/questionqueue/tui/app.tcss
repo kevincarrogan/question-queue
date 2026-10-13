@@ -57,11 +57,6 @@ Screen {
     background: $primary 60%;
 }
 
-#editor-head {
-    color: $text-muted;
-    height: auto;
-}
-
 #text {
     height: 1fr;
     border: none;
@@ -73,7 +68,7 @@ Screen {
     background: transparent;
 }
 
-#text > .text-area--placeholder {
+#text > .text-area--gutter {
     color: $text-muted;
 }
 

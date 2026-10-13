@@ -54,13 +54,15 @@ clean:
 
 # Add Python dependencies
 [group('deps')]
+[positional-arguments]
 add +pkgs:
-    uv add {{pkgs}}
+    uv add "$@"
 
 # Remove Python dependencies
 [group('deps')]
+[positional-arguments]
 remove +pkgs:
-    uv remove {{pkgs}}
+    uv remove "$@"
 
 # Refresh the lockfile
 [group('deps')]

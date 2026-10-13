@@ -5,15 +5,14 @@ from __future__ import annotations
 
 from typing import Literal
 
-from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.message import Message
-from textual.widgets import Static, TextArea
+from textual.widgets import TextArea
 
 from ..core import Item
-from .render import MUTED
+from .highlight import extra_highlights
 
 # Where a new item will go, relative to the selected one.
 type Place = Literal["after", "before", "under", "end"]
@@ -31,10 +30,18 @@ class ItemText(TextArea):
             id="text",
             soft_wrap=True,
             tab_behavior="indent",
-            show_line_numbers=False,
-            placeholder="The first line is what the outline shows.\n"
-            "Anything after it is the rest of the item.",
+            show_line_numbers=True,
+            language="markdown",
         )
+
+    def _build_highlight_map(self) -> None:
+        # Textual's markdown highlighting, then inline markup and fenced code
+        # (highlight.py), then the first line, the subject the outline
+        # shows, in bold.
+        super()._build_highlight_map()
+        for row, extra in extra_highlights(self.text).items():
+            self._highlights[row].extend(extra)
+        self._highlights[0].append((0, None, "bold"))
 
     async def _on_key(self, event: events.Key) -> None:
         # TextArea handles escape itself (moving the focus on), so catch it first.
@@ -56,7 +63,6 @@ class ItemEditor(Vertical):
     shown_id: str | None = None
 
     def compose(self) -> ComposeResult:
-        yield Static(id="editor-head")
         yield ItemText()
 
     @property
@@ -67,12 +73,6 @@ class ItemEditor(Vertical):
     def text(self) -> str:
         return self.text_area.text
 
-    def head(self, words: str) -> None:
-        """A line above the text, for the odd thing worth saying; hidden when empty."""
-        head = self.query_one("#editor-head", Static)
-        head.update(Text(words, style=MUTED))
-        head.display = bool(words)
-
     def show(self, item: Item | None) -> None:
         """Show an item (without moving the focus)."""
         self.adding = False
@@ -80,9 +80,7 @@ class ItemEditor(Vertical):
         self.text_area.display = item is not None
         if item is None:
             self.shown_id = None
-            self.head("Nothing selected.")
             return
-        self.head("")
         if self.shown_id != item.id or self.text_area.text != item.text:
             with self.text_area.prevent(TextArea.Changed):
                 self.text_area.load_text(item.text)
@@ -93,8 +91,6 @@ class ItemEditor(Vertical):
         self.adding = True
         self.place = place
         self.text_area.display = True
-        # No heading: the blank row in the outline shows where it will go.
-        self.head("")
         with self.text_area.prevent(TextArea.Changed):
             self.text_area.load_text("")
         self.text_area.focus()

@@ -51,30 +51,34 @@ the selected item's whole text, where you type. The pane with the bright
 border has the focus, and the key bar starts with the mode: OUTLINE, EDIT,
 NEW or MOVE. Below 90 columns the panes stack.
 
+`w` `a` `s` `d` work as the arrow keys in the outline, and with shift as
+shift+arrows.
+
 | In the outline | Does |
 | --- | --- |
 | `↑` `↓` / `j` `k` | Move between items. The editor shows the selected one. |
-| `←` | Fold. If there's nothing to fold, go to the parent. |
-| `→` | Unfold. If there's nothing folded, edit the item: the editor is the pane to the right. |
-| `enter` | New item here, after this one (and everything under it). It appears in the outline straight away and fills in as you type on the right; `esc` when you're done. |
+| `←` | Go to the parent. |
+| `→` | Edit the item: the editor is the pane to the right. The cursor starts at the end of its first line. |
+| `tab` | Fold or unfold the item, as in org-mode. A folded item shows `▸ N` for the N items under it. |
+| `shift+tab` | Fold or unfold everything, in turn: top level only, one level open, all open. |
+| `enter` | New item here, after this one (and everything under it), with a box. It appears in the outline straight away and fills in as you type on the right; `esc` when you're done. |
 | `alt+enter` | New item above. (`shift+enter` too, where the terminal sends it as its own key or as ESC + enter.) |
 | `n` | New top-level item at the bottom. When you're done you're back on the item you were on. |
-| `m` | Pick the item up (with everything under it): `↑` `↓` carry it through the outline as it's shown, into and out of branches; `tab` / `shift+tab` change its level; `enter` drops it; `esc` puts it back. |
-| `shift+↑` / `shift+↓` | Move the item one place without picking it up. |
-| `tab` / `shift+tab` | Indent / outdent (`shift+→` / `shift+←` too). |
-| `→` / `e` / `ctrl+n` | Edit the selected item. The cursor starts at the end of its first line. |
+| `m` | Pick the item up (with everything under it): `↑` `↓` carry it through the outline as it's shown, into and out of branches, and `←` `→` change its level. `m` or `enter` drops it; `esc` or `u` puts it back. |
+| `shift+↑` / `shift+↓` | Move the item one row without picking it up. |
+| `shift+←` / `shift+→` | Out / in a level. |
+| `ctrl+n` | Edit the selected item, like `→`. |
 | `space` | Tick or untick. A plain item gets a box when you tick it. Ticks cascade: down to the boxes under it, and up, so a parent is ticked once all its boxes are and shows `[-]` while only some are. A plain item in between stops the cascade. |
 | `t` | Give the item a box, or take it away. |
 | `x` | Delete; asks first if there's more to it or items under it. |
-| `u` | Undo the last change: adding, deleting, moving, ticking or editing. |
+| `u` | Undo the last change: adding, deleting, moving, ticking or editing. A run of moves of one item is one change, so `u` puts it back where it started. |
 | `ctrl+p` / `/` / `:` | The palette (see below), with `/` or `:` already typed for those two keys. |
 | `o` | Open the first file reference in the item, like `src/app.py:30`, at that line in your editor. Clicking an underlined reference in the outline does the same. The editor is `$QQ_EDITOR`, else `$VISUAL`, else `$EDITOR`, else VS Code (`code -g`) if it's installed, else vi. VS Code, Cursor, Zed and Sublime open alongside; a terminal editor takes over until you quit it. |
 | `?` | Show every key. |
-| `q` | Quit. |
 
 | In the editor | Does |
 | --- | --- |
-| typing | The first line is what the outline shows; `enter` starts the next line, `tab` indents (for code). It saves as you type. A blank first line isn't saved. |
+| typing | The first line, in bold, is what the outline shows; `enter` starts the next line, `tab` indents (for code). Lines are numbered, and markdown is coloured as you type, including the code in a fenced block by its language. It saves as you type. A blank first line isn't saved. |
 | `esc` / `ctrl+n` | Back to the outline. For a new item, that's when it's added; leave it empty to add nothing. |
 | `ctrl+o` | Open the file reference on the cursor's line. |
 | `ctrl+p` | The palette, working on this item (see below). |
@@ -87,6 +91,7 @@ line in it) works on whatever pane you opened it from:
 | `/words` | find items with all the words, anywhere in their text | find lines in this item |
 | `//words` | the same | find items |
 | `:34` | go to item 34 | go to line 34 |
+| `:34:12` | edit item 34 at line 12 | the same |
 | `/old/new/` | replace in every item | replace in this item |
 | `//old/new/` | the same | replace in every item |
 
@@ -96,7 +101,7 @@ path as it is. Without flags it replaces the first match on each line; add
 literal, not a pattern. The palette lists what will change before `enter`,
 and `u` undoes it. Plain words with no `/` find items, wherever you are.
 
-`ctrl+q` quits from anywhere.
+`ctrl+d` twice quits from anywhere, as in Claude Code: the first press warns, and a second within two seconds quits. (`ctrl+q` quits straight away.)
 
 Text saves a second after you stop typing, and everything else saves
 straight away, always by writing a temp file and renaming it. If something

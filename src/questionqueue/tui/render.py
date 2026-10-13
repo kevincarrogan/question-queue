@@ -26,14 +26,12 @@ def draw_line(
     *,
     box: str = "",
     is_open: bool = True,
-    more: bool = False,
     number: int | None = None,
     width: int = 0,
     folded: int = 0,
 ) -> Text:
     """`subject`, `[ ] subject`, `[-] subject` or `[x] subject`, indented by depth, after its
-    number in a dim gutter. `…` when there's more to the item than its first
-    line, and `▸ 3` when three items are folded away under it."""
+    number in a dim gutter, and `▸ 3` when three items are folded away under it."""
     gutter = "" if number is None else str(number)
     text = Text(f"{gutter:>{width}} " if width else "", style=MUTED)
     text.append(INDENT * depth)
@@ -47,8 +45,6 @@ def draw_line(
         # The meta tells a click which reference it landed on.
         style = Style.parse(REF) + Style(meta={"ref": match[0]})
         text.stylize(style, start + match.start(), start + match.end())
-    if more:
-        text.append(" …", style=MUTED)
     if folded:
         text.append(f"  ▸ {folded}", style=MUTED)
     return text
@@ -63,13 +59,12 @@ def item_line(
     folded: bool = False,
 ) -> Text:
     """How an item looks in the outline, optionally with text still being typed."""
-    first, _, rest = (item.text if text is None else text).partition("\n")
+    first = (item.text if text is None else text).partition("\n")[0]
     return draw_line(
         item.depth,
         first,
         box="[-]" if item.mixed else item.box,
         is_open=item.is_open,
-        more=bool(rest.strip()),
         number=number,
         width=width,
         folded=sum(1 for _ in item.descendants()) if folded else 0,

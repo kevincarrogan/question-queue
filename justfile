@@ -16,6 +16,11 @@ install:
 dev file='scratch.md':
     uv run qq {{file}}
 
+# Build the wheel and sdist into dist/
+[group('dev')]
+build:
+    uv build
+
 # Run the test suite
 [group('quality')]
 test *args:

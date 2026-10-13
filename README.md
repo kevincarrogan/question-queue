@@ -27,12 +27,18 @@ The storage is a plain markdown file, a nested list:
   item you haven't changed. Files from the first version (`- ? question`
   with `> answer` lines) open as items whose text starts with `?`.
 
+## Install
+
+```sh
+uv tool install question-queue   # puts qq on your PATH
+```
+
+To work on `qq` itself, clone this repo, then `just setup` and
+`uv tool install --editable .`, so `qq` runs from your checkout.
+
 ## Use
 
 ```sh
-just setup
-uv tool install --editable .   # puts qq on your PATH
-
 qq             # the queue for this folder (see below)
 qq notes.md    # a specific file, created if it doesn't exist
 qq --here      # start or open the queue in this folder

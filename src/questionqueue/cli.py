@@ -7,7 +7,7 @@ from .core.store import QueueChoice, find_queue, queue_in
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="qq",
-        description="Work through a queue of nested questions kept in a markdown file.",
+        description="An outliner for your terminal, kept in a markdown file.",
         epilog="With no file, qq opens .qq/questions.md in the nearest folder that "
         "has a .qq folder. If there isn't one, it asks whether to start one here "
         "or use your global queue in ~/.qq.",

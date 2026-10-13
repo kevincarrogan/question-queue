@@ -1,0 +1,33 @@
+# Publish to PyPI when a GitHub release is published, using PyPI's trusted
+# publishing (no token stored here). The PyPI side is set up under the
+# project's (or a pending) trusted publisher: this repository, workflow
+# release.yml, environment pypi.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: uv sync --locked
+      - run: just check
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      - run: uv publish --trusted-publishing always

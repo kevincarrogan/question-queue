@@ -65,8 +65,9 @@ keys.install()
 # How long typing has to pause before it's saved.
 SAVE_DELAY = 1.0
 
-# ctrl+d twice within this many seconds quits, as in Claude Code.
-QUIT_WINDOW = 2.0
+# Keys pressed twice to be sure, as ctrl+d quits in Claude Code: the second
+# press has to come within this many seconds.
+TWICE_WINDOW = 2.0
 
 # How many changes `u` can undo.
 UNDO_LIMIT = 200
@@ -159,7 +160,9 @@ class QQApp(App[None]):
         # Whether we've said a blank first line can't be saved, so it's said once.
         self.warned_blank = False
         # When ctrl+d was last pressed.
-        self.quit_pressed = -QUIT_WINDOW
+        self.quit_pressed = -TWICE_WINDOW
+        # The item backspace was last pressed on, and when.
+        self.delete_pressed: tuple[str, float] | None = None
         self.carried: tuple[str, int] | None = None
         # An item picked up with `m`, and the undo count when it was.
         self.moving_id: str | None = None
@@ -498,6 +501,8 @@ class QQApp(App[None]):
                 self.change(lambda: ops.set_kind(self.file.doc, item.id, kind))
             case "delete" if item is not None:
                 self.delete(item)
+            case "delete_twice" if item is not None:
+                self.delete_twice(item)
             case "undo":
                 self.undo()
             case "find":
@@ -600,17 +605,11 @@ class QQApp(App[None]):
         self.refresh_outline()
 
     def delete(self, item: Item) -> None:
+        """x: delete it, asking first if there's more to it than its subject."""
+
         def confirmed(choice: str | None) -> None:
-            if choice != "y":
-                return
-            rows = ops.visible(self.file.doc, self.folded)
-            index = rows.index(item)
-            gone = {item.id, *(each.id for each in item.descendants())}
-            later = [each for each in rows[index + 1 :] if each.id not in gone]
-            earlier = rows[:index]
-            neighbour = later[0] if later else (earlier[-1] if earlier else None)
-            self.change(lambda: ops.delete(self.file.doc, item.id))
-            self.select(neighbour.id if neighbour else None)
+            if choice == "y":
+                self.remove(item)
 
         count = sum(1 for _ in item.descendants())
         if count or item.body:
@@ -627,7 +626,32 @@ class QQApp(App[None]):
                 confirmed,
             )
         else:
-            confirmed("y")
+            self.remove(item)
+
+    def delete_twice(self, item: Item) -> None:
+        """backspace: the first press warns, a second straight after, on the
+        same item, deletes it. Pressing twice is the asking."""
+        now = time.monotonic()
+        last = self.delete_pressed
+        if last is not None and last[0] == item.id and now - last[1] < TWICE_WINDOW:
+            self.delete_pressed = None
+            self.remove(item)
+            return
+        self.delete_pressed = (item.id, now)
+        self.notify(
+            f"Press backspace again to delete “{item.subject}”", timeout=TWICE_WINDOW
+        )
+
+    def remove(self, item: Item) -> None:
+        """Delete `item` and what's under it, and select the next row."""
+        rows = ops.visible(self.file.doc, self.folded)
+        index = rows.index(item)
+        gone = {item.id, *(each.id for each in item.descendants())}
+        later = [each for each in rows[index + 1 :] if each.id not in gone]
+        earlier = rows[:index]
+        neighbour = later[0] if later else (earlier[-1] if earlier else None)
+        self.change(lambda: ops.delete(self.file.doc, item.id))
+        self.select(neighbour.id if neighbour else None)
 
     # -- the command line: finding, going to and replacing ------------------------
 
@@ -1105,11 +1129,11 @@ class QQApp(App[None]):
     async def action_quit_twice(self) -> None:
         """ctrl+d: the first press warns, a second straight after quits."""
         now = time.monotonic()
-        if now - self.quit_pressed < QUIT_WINDOW:
+        if now - self.quit_pressed < TWICE_WINDOW:
             await self.action_quit()
             return
         self.quit_pressed = now
-        self.notify("Press ctrl+d again to quit", timeout=QUIT_WINDOW)
+        self.notify("Press ctrl+d again to quit", timeout=TWICE_WINDOW)
 
     async def action_quit(self) -> None:
         if not self.loaded:

@@ -77,6 +77,7 @@ shift+arrows.
 | `space` | Tick or untick (clicking the box does it too). A plain item gets a box when you tick it. Ticks cascade: down to the boxes under it, and up, so a parent is ticked once all its boxes are and shows `[-]` while only some are. A plain item in between stops the cascade. |
 | `t` | Give the item a box, or take it away. |
 | `x` | Delete; asks first if there's more to it or items under it. |
+| `backspace` `backspace` | Delete, as `ctrl+d` quits: the first press warns, and a second within two seconds deletes it (and what's under it) without asking. |
 | `u` | Undo the last change: adding, deleting, moving, ticking or editing. A run of moves of one item is one change, so `u` puts it back where it started. |
 | `/` / `:` / `ctrl+p` | The command line (see below), with `/` or `:` already typed for those two keys. |
 | `n` / `N` | The next or previous item with the words last found, round the end, as in vim. `esc` takes the marks away. |

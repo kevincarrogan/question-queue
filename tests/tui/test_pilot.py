@@ -177,6 +177,45 @@ def test_x_asks_first_when_theres_more_to_it(notes: Path) -> None:
     assert [i.id for i in on_disk(notes).walk()] == ["g7h8"]
 
 
+def test_backspace_twice_deletes_without_asking(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("backspace")
+        assert "a1b2" in app.file.doc
+        assert any("backspace again" in str(n.message) for n in app._notifications)
+        await pilot.press("backspace")
+        assert not isinstance(app.screen, ChoiceModal)
+        assert "a1b2" not in app.file.doc
+        assert app.current_id == "g7h8"
+        await pilot.press("u")
+        assert "a1b2" in app.file.doc
+
+    run(notes, scenario)
+
+
+def test_backspace_on_another_item_warns_again(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("backspace", "down", "backspace")
+        assert "a1b2" in app.file.doc
+        assert "c3d4" in app.file.doc
+
+    run(notes, scenario)
+
+
+def test_backspace_warns_again_after_a_pause(
+    notes: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = iter([100.0, 103.0])
+    fake_time = SimpleNamespace(monotonic=lambda: next(clock))
+    monkeypatch.setattr("questionqueue.tui.app.time", fake_time)
+
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("backspace")
+        await pilot.press("backspace")  # three seconds later: just a warning
+        assert "a1b2" in app.file.doc
+
+    run(notes, scenario)
+
+
 # -- the editor: where typing goes --------------------------------------------
 
 

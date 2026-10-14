@@ -52,6 +52,8 @@ class OutlineList(OptionList):
         Binding("space", "request('tick')", show=False),
         Binding("t", "request('toggle_box')", show=False),
         Binding("x", "request('delete')", show=False),
+        # Twice, as ctrl+d quits: the first press warns.
+        Binding("backspace", "request('delete_twice')", show=False),
         Binding("u", "request('undo')", show=False),
         Binding("slash", "request('find')", show=False),
         Binding("colon", "request('goto')", show=False),

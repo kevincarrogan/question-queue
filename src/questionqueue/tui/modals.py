@@ -54,6 +54,7 @@ In the outline (keys are commands, nothing types; w a s d are the arrows)
                   clicking the box does it too
   t               add or remove the box
   x               delete                    u   undo (a run of moves is one)
+  backspace       twice: delete without asking (the first one warns)
   /  :  ctrl+p    the command line, as in vim, moving you as you type:
                   /words find, :34 item 34, :34:12 its line 12,
                   /old/new/ replace in every item (g every match, i any case);

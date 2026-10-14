@@ -354,6 +354,7 @@ shift+arrows, for terminals that don't send shift with the arrows.
 | `space` / click the box | Tick or untick, cascading (see ticks, above). |
 | `t` | Give the item a box, or take it away. |
 | `x` | Delete; asks first if it has a body or items under it. |
+| `backspace` `backspace` | Delete, as `ctrl+d` quits: the first press warns, a second on the same item within two seconds deletes it and what's under it, without asking. |
 | `u` | Undo. |
 | `/` `:` | Open the command line with that already typed. |
 | `n` `N` | Next or previous item with the last words found; `esc` takes the marks away. |

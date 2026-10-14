@@ -53,7 +53,8 @@ src/questionqueue/
     outline.py      the outline pane (subjects only)
     editor.py       the editor pane (the whole text)
     render.py       how an item is drawn in the outline
-    modals.py       single-key choices, the palette, the key list
+    command.py      the command line: what / and : understand
+    modals.py       single-key choices, the key list
     keys.py         alt+enter support
     highlight.py    inline markdown and fenced code colouring
     app.tcss
@@ -299,7 +300,10 @@ The TUI has been reshaped by using it:
    behind all of them. `→` edits, because that's what a hand reaches for,
    so folding moved to `tab` and `shift+tab`, as in org-mode. WASD doubles
    as the arrows, `ctrl+d` twice quits, `/` and `:` open a vim-like
-   palette, ticks cascade, and references can be clicked. The editor lost
+   palette, ticks cascade, and references can be clicked. The palette then
+   became vim's command line on the bottom line, moving you as you type
+   instead of listing results over the panes, so `n` went to vim's next
+   match and adding at the bottom moved to `b`. The editor lost
    its help text and gained line numbers and markdown colouring.
 
 The earlier versions are in git history and on the project canvas.
@@ -343,15 +347,16 @@ shift+arrows, for terminals that don't send shift with the arrows.
 | `shift+tab` | The whole outline in turn: top level only, one level open, all open. If what was selected is hidden, the selection moves to the item it's folded under. |
 | `enter` | New item here, after this one (and its children). New items get a box. |
 | `alt+enter` | New item above. (`shift+enter` too, where the terminal sends it as its own key or as ESC + enter.) |
-| `n` | New top-level item at the bottom; when you're done you're back where you were. |
+| `b` | New top-level item at the bottom; when you're done you're back where you were. |
 | `m` | Pick the item up and carry it (below). |
 | `shift+↑` / `shift+↓` | Move the item one row without picking it up. |
 | `shift+←` / `shift+→` | Out / in a level. |
-| `space` | Tick or untick, cascading (see ticks, above). |
+| `space` / click the box | Tick or untick, cascading (see ticks, above). |
 | `t` | Give the item a box, or take it away. |
 | `x` | Delete; asks first if it has a body or items under it. |
 | `u` | Undo. |
-| `/` `:` | Open the palette with that already typed. |
+| `/` `:` | Open the command line with that already typed. |
+| `n` `N` | Next or previous item with the last words found; `esc` takes the marks away. |
 | `o` / click | Open the file reference in the item. |
 | `?` | Every key. |
 
@@ -363,7 +368,7 @@ shift+arrows, for terminals that don't send shift with the arrows.
 
 | Anywhere | Does |
 | --- | --- |
-| `ctrl+p` | The palette (below). Cmd+P never reaches a terminal app. |
+| `ctrl+p` | The command line (below). Cmd+P never reaches a terminal app. |
 | `ctrl+d` `ctrl+d` | Quit, as in Claude Code: the first press warns, a second within two seconds quits. It takes over the editor's delete-forward. `ctrl+q` quits straight away. |
 
 Textual reports ESC + carriage return as plain `enter`, dropping the alt,
@@ -383,7 +388,7 @@ Capturing a thought without losing your place is what matters most:
 - **`enter` adds where you are**, as the next sibling. A blank row appears in
   the outline straight away and fills in as you type; `esc` adds it (or adds
   nothing, if it's empty).
-- **`n` adds at the bottom**, as a new top-level item, for a thought that has
+- **`b` adds at the bottom**, as a new top-level item, for a thought that has
   nothing to do with what you're on. Afterwards the selection goes back to
   where it was.
 - **`m` picks an item up** (MOVE, in blue). `↑` `↓` carry it through the
@@ -406,11 +411,21 @@ nothing in between, is one change, so `u` puts it back where it started
 starts a fresh run, so putting it back undoes only what happened since. A reload from disk clears the
 stack.
 
-### The palette
+### The command line
 
-`ctrl+p` from either pane, or `/` and `:` in the outline, opens a palette at
-the top: VS Code's quick open with vim's command line in it. What it works on
-depends on the pane it was opened from.
+`ctrl+p` from either pane, or `/` and `:` in the outline, opens vim's command
+line (`tui/command.py`) on the bottom line, in place of the key bar. There's
+no list of results over the panes: what's typed moves you as you type it, the
+way vim's incsearch does, from where you were to the first match after it
+(round the end if need be), unfolding what it's inside. The outline marks
+every match, as vim's hlsearch does, and an item matched only in its body
+shows a short glimpse of that line after its subject. In the editor the match
+is selected. `↓` `↑` step through the matches while the line is open; `enter`
+stays; `esc`, or backspacing past the start, puts back the selection, the
+folds and the cursor. After a find, `n` and `N` in the outline go on to the
+next and previous match, and the marks stay until `esc`. `/` and `enter` on
+their own find the last words again. A click in either pane closes the line
+where it is. What it works on depends on the pane it was opened from.
 
 | Type | In the outline | In the editor |
 | --- | --- | --- |
@@ -425,8 +440,8 @@ depends on the pane it was opened from.
 Replace needs the closing slash, so `/src/app.py` stays a search for a path;
 `\/` is a literal slash. Flags follow it as in vim: `g` for every match on a
 line (the first, without it) and `i` to ignore case. The text is literal, not
-a pattern. The palette previews the items that would change and says how
-many; with none, `enter` beeps. A replace is one undo.
+a pattern. Before `enter` the items that would change are marked and the line
+says how many; with none, `enter` beeps. A replace is one undo.
 
 ### Saving and reloading
 
@@ -469,8 +484,9 @@ many; with none, `enter` beeps. A replace is one undo.
   below, above, at the bottom and with a body, the blank row filling in, and
   adding nothing; the guide in an empty file; carrying with shift+arrows and
   undoing a run of moves in one step; indent and outdent; folding; undo; ticking, `[-]`
-  and the box; deleting with and without asking; the palette in both panes,
-  replace and its flags; the which-queue choice; reloads and the conflict
+  and the box, by key and by clicking it; deleting with and without asking; the
+  command line in both panes, moving and marking as you type, stepping, `esc`
+  going back, `n` and `N`, replace and its flags; the which-queue choice; reloads and the conflict
   dialog; opening references with keys and with a click; and how the outline
   draws items.
 

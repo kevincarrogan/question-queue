@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -15,7 +17,7 @@ from textual.containers import Horizontal
 from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widget import Widget
-from textual.widgets import OptionList, Static, TextArea
+from textual.widgets import Input, OptionList, Static, TextArea
 
 from ..core import (
     DocumentFile,
@@ -39,20 +41,24 @@ from ..core.refs import (
     windowed,
 )
 from . import keys
-from .editor import Back, ItemEditor, Place
-from .modals import (
-    Choice,
-    ChoiceModal,
-    Entry,
-    GoToItem,
-    GoToLine,
-    HelpModal,
-    PaletteModal,
+from .command import (
+    HINTS,
+    Command,
+    CommandLine,
+    Find,
+    Jump,
     Pane,
+    Problem,
     Replace,
+    has_words,
+    parse_command,
+    replace_pattern,
+    words_pattern,
 )
+from .editor import Back, ItemEditor, Place
+from .modals import ChoiceModal, HelpModal
 from .outline import NEW_ID, OutlineList
-from .render import draw_line, gutter_width, item_line
+from .render import Found, draw_line, gutter_width, item_line
 
 keys.install()
 
@@ -79,7 +85,7 @@ KEY_HINTS: dict[Mode, list[tuple[str, str]]] = {
         ("m", "move"),
         ("space", "tick"),
         ("u", "undo"),
-        ("^p", "find"),
+        ("/", "find"),
         ("?", "keys"),
     ],
     "EDIT": [
@@ -98,6 +104,16 @@ KEY_HINTS: dict[Mode, list[tuple[str, str]]] = {
         ("esc", "put it back"),
     ],
 }
+
+
+@dataclass(frozen=True)
+class Origin:
+    """Where you were when the command line opened, for esc to go back to."""
+
+    pane: Pane
+    current_id: str | None
+    folded: frozenset[str]
+    cursor: tuple[int, int]
 
 
 def tilde(path: Path) -> str:
@@ -151,6 +167,15 @@ class QQApp(App[None]):
         # Where to go back to after `n`.
         self.return_focus: Widget | None = None
         self.return_cursor: tuple[int, int] | None = None
+        # While the command line is open, where you were when it opened, and
+        # what's typed on it.
+        self.origin: Origin | None = None
+        self.command: Command = Find("", everywhere=True)
+        # Whether it points at something, so enter has something to do.
+        self.on_target = False
+        # The last words found, for n and N, and whether they're still marked.
+        self.last_words = ""
+        self.marking = False
         if isinstance(path, QueueChoice):
             self.choice = path
         else:
@@ -174,6 +199,9 @@ class QQApp(App[None]):
             yield OutlineList(id="outline")
             yield ItemEditor(id="editor")
         yield Static(id="keys")
+        with Horizontal(id="command"):
+            yield CommandLine(id="command-line", select_on_focus=False)
+            yield Static(id="command-hint", markup=False)
 
     def on_mount(self) -> None:
         if self.choice is None:
@@ -233,7 +261,8 @@ class QQApp(App[None]):
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         return not (
-            action in MAIN_SCREEN_ACTIONS and isinstance(self.screen, ModalScreen)
+            action in MAIN_SCREEN_ACTIONS
+            and (isinstance(self.screen, ModalScreen) or self.origin is not None)
         )
 
     # -- drawing --------------------------------------------------------------
@@ -245,6 +274,7 @@ class QQApp(App[None]):
             self.current_id,
             folded=self.folded,
             new_row=self.new_row() if self.editor.adding else None,
+            found=self.found(),
         )
         self.outline.set_class(self.moving_id is not None, "-moving")
         self.refresh_keys()
@@ -260,6 +290,9 @@ class QQApp(App[None]):
         self.query_one("#keys", Static).update(bar)
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        # A click elsewhere closes the command line, staying where it took you.
+        if self.origin is not None and not isinstance(event.widget, CommandLine):
+            self.close_command_line()
         self.refresh_keys()
 
     def numbering(self, item: Item) -> tuple[int, int]:
@@ -362,8 +395,16 @@ class QQApp(App[None]):
         item = self.current
         if item is not None and self.editor.shown_id == item.id:
             number, width = self.numbering(item)
+            found = self.found()
             self.outline.redraw_line(
-                item.id, item_line(item, self.editor.text, number=number, width=width)
+                item.id,
+                item_line(
+                    item,
+                    self.editor.text,
+                    number=number,
+                    width=width,
+                    found=found.pattern if found and item.id in found.ids else None,
+                ),
             )
         if self.save_timer is not None:
             self.save_timer.stop()
@@ -451,11 +492,7 @@ class QQApp(App[None]):
             case "move" if item is not None:
                 self.pick_up(item)
             case "tick" if item is not None:
-                # A plain item is always open, so space gives it a ticked box.
-                if item.is_open:
-                    self.change(lambda: ops.mark_done(self.file.doc, item.id))
-                else:
-                    self.change(lambda: ops.reopen(self.file.doc, item.id))
+                self.tick(item)
             case "toggle_box" if item is not None:
                 kind = Kind.PLAIN if item.kind is Kind.TODO else Kind.TODO
                 self.change(lambda: ops.set_kind(self.file.doc, item.id, kind))
@@ -467,6 +504,12 @@ class QQApp(App[None]):
                 self.action_find("/")
             case "goto":
                 self.action_find(":")
+            case "next_match" | "previous_match":
+                self.find_again(1 if event.action == "next_match" else -1)
+            case "escape" if self.marking:
+                # As vim's :noh, the marks go until the next find.
+                self.marking = False
+                self.refresh_outline()
             case "help":
                 self.push_screen(HelpModal())
             case "open_ref":
@@ -495,6 +538,24 @@ class QQApp(App[None]):
         self.autosave()
         self.refresh_outline()
         self.editor.show(self.current)
+
+    def tick(self, item: Item) -> None:
+        # A plain item is always open, so ticking gives it a ticked box.
+        if item.is_open:
+            self.change(lambda: ops.mark_done(self.file.doc, item.id))
+        else:
+            self.change(lambda: ops.reopen(self.file.doc, item.id))
+
+    @on(OutlineList.TickClicked)
+    def clicked_box(self, event: OutlineList.TickClicked) -> None:
+        if (
+            self.moving_id is not None
+            or self.editor.adding
+            or event.item_id not in self.file.doc
+        ):
+            return
+        self.select(event.item_id)
+        self.tick(self.file.doc.get(event.item_id))
 
     def step(self, item: Item, *, down: bool) -> None:
         ops.step(self.file.doc, item.id, down=down, folded=self.folded)
@@ -568,49 +629,302 @@ class QQApp(App[None]):
         else:
             confirmed("y")
 
-    # -- finding --------------------------------------------------------------------
+    # -- the command line: finding, going to and replacing ------------------------
 
     def action_find(self, start: str = "") -> None:
-        """ctrl+p: the palette. In the outline it works on items; in the
-        editor on the item being edited, with // for every item."""
-        if self.moving_id is not None or self.editor.adding:
+        """ctrl+p, / and :, as in vim: the command line opens on the bottom
+        line, and what's typed moves you as you type it. In the outline it
+        works on items; in the editor on the item being edited, with // for
+        every item."""
+        if self.moving_id is not None or self.editor.adding or self.origin is not None:
             return
         area = self.editor.text_area
         pane: Pane = "editor" if self.focused is area else "outline"
         self.save_edits()
-        entries = [
-            Entry(number, item.text, item.id)
-            for number, item in enumerate(self.file.doc.walk(), 1)
+        self.origin = Origin(
+            pane, self.current_id, frozenset(self.folded), area.cursor_location
+        )
+        # The last find's marks go; this one marks its own as it's typed.
+        self.marking = False
+        line = self.query_one(CommandLine)
+        with line.prevent(Input.Changed):
+            line.value = start
+        line.cursor_position = len(start)
+        self.query_one("#keys").display = False
+        self.query_one("#command").display = True
+        line.focus()
+        self.preview(start)
+
+    @property
+    def in_this_item(self) -> bool:
+        """Whether the command works on the lines of the item being edited:
+        / and :12 in the editor."""
+        origin = self.origin
+        if origin is None or origin.pane != "editor" or origin.current_id is None:
+            return False
+        match self.command:
+            case Find(_, everywhere) | Replace(everywhere=everywhere):
+                return not everywhere
+            case Jump(_, line):
+                return line is None
+        return False
+
+    def hits(self, words: str) -> list[Item]:
+        """Items with every word somewhere in their text, in file order."""
+        return [item for item in self.file.doc.walk() if has_words(item.text, words)]
+
+    def replace_scope(self, replace: Replace) -> list[Item]:
+        if self.in_this_item:
+            return [self.current] if self.current is not None else []
+        return list(self.file.doc.walk())
+
+    def would_change(self, replace: Replace) -> list[Item]:
+        return [
+            item
+            for item in self.replace_scope(replace)
+            if ops.replaced(
+                item.text,
+                replace.old,
+                replace.new,
+                every=replace.every,
+                ignore_case=replace.ignore_case,
+            )
+            != item.text
         ]
 
-        def chosen(choice: Choice | None) -> None:
-            match choice:
-                case GoToItem(item_id, line) if item_id in self.file.doc:
-                    # Open up whatever it's folded inside.
-                    for ancestor in self.file.doc.get(item_id).ancestors():
-                        self.folded.discard(ancestor.id)
-                    self.select(item_id)
-                    if line is not None:
-                        self.edit_current()
-                        last = area.document.line_count - 1
-                        area.move_cursor((min(line - 1, last), 0))
-                case GoToLine(row, column):
-                    area.focus()
-                    area.move_cursor((row, column))
-                case Replace():
-                    self.replace_text(choice, pane)
+    def found(self) -> Found | None:
+        """What to mark in the outline: what the command line finds as it's
+        typed, and after a find, what it found (until esc)."""
+        if self.origin is not None:
+            match self.command:
+                case Find(words) if words.strip() and not self.in_this_item:
+                    ids = frozenset(item.id for item in self.hits(words))
+                    return Found(words_pattern(words), ids)
+                case Replace() as replace:
+                    ids = frozenset(item.id for item in self.would_change(replace))
+                    return Found(replace_pattern(replace), ids)
+            return None
+        if self.marking and self.last_words:
+            ids = frozenset(item.id for item in self.hits(self.last_words))
+            return Found(words_pattern(self.last_words), ids)
+        return None
 
-        self.push_screen(
-            PaletteModal(entries, pane=pane, start=start, current_id=self.current_id),
-            chosen,
-        )
+    def preview(self, query: str) -> None:
+        """Show what the command line's text does, as it's typed: from where
+        you were, to the first thing it finds."""
+        origin = self.origin
+        assert origin is not None
+        self.command = parse_command(query)
+        self.go_back(origin)
+        self.on_target, hint = self.aim(1)
+        if not query.lstrip("/:").strip():
+            hint = HINTS[origin.pane]
+        self.query_one("#command-hint", Static).update(hint)
 
-    def replace_text(self, replace: Replace, pane: Pane) -> None:
-        doc = self.file.doc
-        if replace.everywhere or pane == "outline":
-            ids = [item.id for item in doc.walk()]
+    def go_back(self, origin: Origin) -> None:
+        """Back to where the command line opened."""
+        self.folded = set(origin.folded)
+        self.select(origin.current_id)
+        self.editor.text_area.move_cursor(origin.cursor)
+
+    def aim(self, delta: int) -> tuple[bool, str]:
+        """Go to what the command points at: the next match on from here, as
+        vim's n does, or with `delta` -1 the one before. Whether there's
+        anything there, and what to say about it."""
+        area = self.editor.text_area
+        command = self.command
+        match command:
+            case Problem(message):
+                return False, message
+            case Jump(None, _):
+                return False, ""
+            case Jump(number, None) if number is not None and self.in_this_item:
+                if not 1 <= number <= area.document.line_count:
+                    return False, f"There's no line {number}"
+                self.select_text(number - 1, 0, 0)
+                return True, ""
+            case Jump(number, line):
+                item = next(
+                    (
+                        each
+                        for n, each in enumerate(self.file.doc.walk(), 1)
+                        if n == number
+                    ),
+                    None,
+                )
+                if item is None:
+                    return False, f"There's no item {number}"
+                self.reveal(item.id)
+                if line is not None:
+                    self.select_text(min(line, area.document.line_count) - 1, 0, 0)
+                return True, ""
+            case Find(words) if not words.strip():
+                return False, ""
+            case Find(words) if self.in_this_item:
+                return self.aim_at_line(words, delta)
+            case Find(words):
+                hits = self.hits(words)
+                hit = self.next_hit(hits, self.current_id, delta)
+                if hit is None:
+                    return False, "Nothing matches"
+                self.reveal(hit.id)
+                self.mark_in_editor(words_pattern(words))
+                return True, f"{hits.index(hit) + 1} of {len(hits)}"
+            case Replace() as replace:
+                count = len(self.would_change(replace))
+                if not count:
+                    where = "this item" if self.in_this_item else "any item"
+                    return False, f"Nothing in {where} matches"
+                plural = "s" if count > 1 else ""
+                return True, f"enter replaces in {count} item{plural} (u undoes it)"
+
+    def next_hit(self, hits: list[Item], after: str | None, delta: int) -> Item | None:
+        """The first of `hits` after the item `after` in file order (before
+        it, with `delta` -1), round the end if need be."""
+        if not hits:
+            return None
+        order = {item.id: n for n, item in enumerate(self.file.doc.walk())}
+        here = order.get(after or "", -1)
+        if delta > 0:
+            return next((hit for hit in hits if order[hit.id] > here), hits[0])
+        return next((hit for hit in reversed(hits) if order[hit.id] < here), hits[-1])
+
+    def aim_at_line(self, words: str, delta: int) -> tuple[bool, str]:
+        """The next line of the item being edited with every word in it."""
+        area = self.editor.text_area
+        terms = words.lower().split()
+        spots = [
+            (row, line.lower().find(terms[0]))
+            for row, line in enumerate(area.text.split("\n"))
+            if all(term in line.lower() for term in terms)
+        ]
+        if not spots:
+            return False, "Nothing in this item matches"
+        here = min(area.selection.start, area.selection.end)
+        if delta > 0:
+            spot = next((each for each in spots if each > here), spots[0])
         else:
+            spot = next((each for each in reversed(spots) if each < here), spots[-1])
+        self.select_text(*spot, len(terms[0]))
+        return True, f"{spots.index(spot) + 1} of {len(spots)}"
+
+    def reveal(self, item_id: str) -> None:
+        """Select an item, opening up whatever it's folded inside."""
+        for ancestor in self.file.doc.get(item_id).ancestors():
+            self.folded.discard(ancestor.id)
+        self.select(item_id)
+
+    def select_text(self, row: int, column: int, length: int) -> None:
+        area = self.editor.text_area
+        area.move_cursor((row, column))
+        area.move_cursor((row, column + length), select=True)
+
+    def mark_in_editor(self, pattern: re.Pattern[str]) -> None:
+        """Select the first thing `pattern` finds in the editor."""
+        text = self.editor.text_area.text
+        hit = pattern.search(text)
+        if hit is None:
+            return
+        row = text.count("\n", 0, hit.start())
+        column = hit.start() - (text.rfind("\n", 0, hit.start()) + 1)
+        self.select_text(row, column, hit.end() - hit.start())
+
+    @on(Input.Changed, "#command-line")
+    def command_changed(self, event: Input.Changed) -> None:
+        if self.origin is not None:
+            self.preview(event.value)
+
+    @on(CommandLine.Step)
+    def command_step(self, event: CommandLine.Step) -> None:
+        """↓ and ↑: the next or previous match."""
+        if not isinstance(self.command, Find):
+            self.bell()
+            return
+        found, hint = self.aim(event.delta)
+        if found:
+            self.query_one("#command-hint", Static).update(hint)
+        else:
+            self.bell()
+
+    @on(CommandLine.Cancel)
+    def command_cancelled(self) -> None:
+        """esc: back where you were."""
+        origin = self.origin
+        if origin is None:
+            return
+        self.command = Find("", everywhere=True)
+        self.go_back(origin)
+        self.close_command_line()
+        self.focus_pane(origin.pane)
+        self.editor.text_area.move_cursor(origin.cursor)
+
+    @on(Input.Submitted, "#command-line")
+    def command_entered(self, event: Input.Submitted) -> None:
+        """enter: stay where it took you, or do the replace."""
+        event.stop()
+        origin = self.origin
+        if origin is None:
+            return
+        command = self.command
+        if isinstance(command, Find) and not command.words.strip() and self.last_words:
+            # As in vim, / on its own finds the last thing again.
+            self.command = command = Find(self.last_words, command.everywhere)
+            self.go_back(origin)
+            self.on_target, _ = self.aim(1)
+        if not self.on_target:
+            self.bell()
+            return
+        in_this_item = self.in_this_item
+        self.close_command_line()
+        area = self.editor.text_area
+        match command:
+            case Find(words):
+                self.last_words = words
+                self.marking = not in_this_item
+                self.refresh_outline()
+            case Replace():
+                self.focus_pane(origin.pane)
+                self.replace_text(command, in_this_item)
+                return
+        editing = origin.pane == "editor" or (
+            isinstance(command, Jump) and command.line is not None
+        )
+        self.focus_pane("editor" if editing else "outline")
+        if editing:
+            area.move_cursor(min(area.selection.start, area.selection.end))
+
+    def close_command_line(self) -> None:
+        """Close the command line, staying where it took you."""
+        self.origin = None
+        self.query_one("#command").display = False
+        self.query_one("#keys").display = True
+        self.refresh_outline()
+
+    def focus_pane(self, pane: Pane) -> None:
+        if pane == "editor" and self.editor.text_area.display:
+            self.editor.text_area.focus()
+        else:
+            self.outline.focus()
+
+    def find_again(self, delta: int) -> None:
+        """n and N, as in vim: the next or previous item with the last words found."""
+        if not self.last_words:
+            self.notify("Nothing found yet: / finds", timeout=1.5)
+            return
+        hit = self.next_hit(self.hits(self.last_words), self.current_id, delta)
+        if hit is None:
+            self.notify(f"Nothing matches “{self.last_words}”", timeout=1.5)
+            return
+        self.marking = True
+        self.reveal(hit.id)
+        self.mark_in_editor(words_pattern(self.last_words))
+
+    def replace_text(self, replace: Replace, in_this_item: bool) -> None:
+        doc = self.file.doc
+        if in_this_item:
             ids = [self.current_id] if self.current_id is not None else []
+        else:
+            ids = [item.id for item in doc.walk()]
         area = self.editor.text_area
         cursor = area.cursor_location
         changed: list[Item] = []
@@ -626,8 +940,7 @@ class QQApp(App[None]):
                 )
             )
         )
-        if pane == "editor":
-            area.focus()
+        if self.focused is area:
             last = area.document.line_count - 1
             row = min(cursor[0], last)
             area.move_cursor((row, min(cursor[1], len(area.document.get_line(row)))))

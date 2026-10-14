@@ -2,31 +2,32 @@
 
 import asyncio
 import contextlib
+import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from rich.style import Style
+from rich.text import Text
 from textual.pilot import Pilot
+from textual.screen import ModalScreen
 
 from questionqueue.core import Kind, QueueChoice, Status, parse, queue_in
 from questionqueue.tui import app as app_module
 from questionqueue.tui.app import QQApp
-from questionqueue.tui.editor import ItemText
-from questionqueue.tui.modals import (
-    ChoiceModal,
+from questionqueue.tui.command import (
+    CommandLine,
     Find,
-    HelpModal,
     Jump,
-    PaletteModal,
     Problem,
     Replace,
-    by_number,
     parse_command,
 )
+from questionqueue.tui.editor import ItemText
+from questionqueue.tui.modals import ChoiceModal, HelpModal
 from questionqueue.tui.outline import NEW_ID, OutlineList
-from questionqueue.tui.render import outline
+from questionqueue.tui.render import FOUND, GLIMPSE, glimpse, outline
 
 TREE = """\
 # Trip
@@ -80,6 +81,14 @@ def mode(app: QQApp) -> str:
     return app.mode
 
 
+def hint(app: QQApp) -> str:
+    return str(app.query_one("#command-hint").render())
+
+
+def commanding(app: QQApp) -> bool:
+    return app.query_one("#command").display
+
+
 # -- the outline: moving and arranging, never typing ----------------------------
 
 
@@ -95,7 +104,7 @@ def test_starts_in_the_outline_on_the_first_item(notes: Path) -> None:
 
 def test_letters_in_the_outline_never_type(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("z", "w", "b")
+        await pilot.press("z", "w", "q")
         assert mode(app) == "OUTLINE"
 
     run(notes, scenario)
@@ -459,6 +468,34 @@ def test_the_outline_shows_numbered_first_lines() -> None:
     ]
 
 
+def test_clicking_a_box_ticks_it(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        line = prompt(app, "e5f6")
+        await pilot.click(OutlineList, offset=(2 + line.index("[x]") + 1, 3))
+        await pilot.pause()
+        assert app.current_id == "e5f6"
+        assert app.file.doc.get("e5f6").status is Status.OPEN
+        await pilot.click(OutlineList, offset=(2 + line.index("[x]") + 1, 3))
+        await pilot.pause()
+        assert app.file.doc.get("e5f6").status is Status.DONE
+        # Elsewhere on the line just selects it.
+        await pilot.click(OutlineList, offset=(2 + line.index("Book"), 3))
+        await pilot.pause()
+        assert app.file.doc.get("e5f6").status is Status.DONE
+
+    run(notes, scenario)
+
+
+def test_a_glimpse_is_a_short_stretch_around_the_match() -> None:
+    found = re.compile("march", re.IGNORECASE)
+    assert glimpse("By the end of March.", found) == "By the end of March."
+    long = "Words to get through first, then by the end of March, and more after that."
+    cut = glimpse(long, found)
+    assert "March" in cut
+    assert cut.startswith("…") and cut.endswith("…")
+    assert len(cut) == GLIMPSE + 2
+
+
 def test_references_are_underlined_and_draw(tmp_path: Path) -> None:
     text = "- see foo/bar/core.py:30 <!-- q:a1b2 -->\n"
     line = outline(parse(text))[0][0]
@@ -526,11 +563,11 @@ def test_editing_the_first_line_updates_the_outline_as_you_type(notes: Path) -> 
 # -- n: a new item at the bottom, then back where you were --------------------------
 
 
-def test_n_adds_at_the_bottom_and_brings_you_back(notes: Path) -> None:
+def test_b_adds_at_the_bottom_and_brings_you_back(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
         await pilot.press("right", "down", "end")
         await type_text(pilot, " Maybe Cornwall.")
-        await pilot.press("escape", "n")
+        await pilot.press("escape", "b")
         assert mode(app) == "NEW"
         assert app.editor.text == ""
         assert app.outline.get_option_at_index(4).id == NEW_ID
@@ -547,9 +584,9 @@ def test_n_adds_at_the_bottom_and_brings_you_back(notes: Path) -> None:
     assert doc.children[-1].subject == "Buy a new tent"
 
 
-def test_an_empty_n_adds_nothing(notes: Path) -> None:
+def test_an_empty_b_adds_nothing(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
-        await pilot.press("down", "n", "escape")
+        await pilot.press("down", "b", "escape")
         assert mode(app) == "OUTLINE"
         assert app.current_id == "c3d4"
         assert app.outline.option_count == 4
@@ -866,11 +903,6 @@ def test_what_the_palette_understands() -> None:
     assert isinstance(parse_command("/tent/van/x"), Problem)
 
 
-def test_numbers_typed_so_far_put_the_exact_one_first() -> None:
-    assert by_number([1, 2, 3, 30, 31], 3) == [3, 30, 31]
-    assert by_number([1, 2, 3], None) == [1, 2, 3]
-
-
 def test_ctrl_p_in_the_outline_goes_to_an_item(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
         await pilot.press("ctrl+p")
@@ -917,8 +949,7 @@ def test_replace_in_the_editor_is_this_item_only(notes: Path) -> None:
     async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
         await pilot.press("right", "ctrl+p")
         await type_text(pilot, "/e/E/g")
-        hint = str(app.screen.query_one("#palette-hint").render())
-        assert "replaces in 1 item" in hint
+        assert "replaces in 1 item" in hint(app)
         await pilot.press("enter")
         assert isinstance(app.focused, ItemText)
 
@@ -959,11 +990,158 @@ def test_a_replace_with_no_matches_stays_open(notes: Path) -> None:
         await pilot.press("ctrl+p")
         await type_text(pilot, "/zebra/x/")
         await pilot.press("enter")
-        assert isinstance(app.screen, PaletteModal)
+        assert commanding(app)
         await pilot.press("escape")
+        assert not commanding(app)
 
     run(notes, scenario)
     assert notes.read_text() == TREE
+
+
+def test_the_command_line_is_the_bottom_line_not_a_dialog(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        assert not commanding(app)
+        await pilot.press("slash")
+        assert commanding(app)
+        assert not app.query_one("#keys").display
+        assert isinstance(app.focused, CommandLine)
+        assert not isinstance(app.screen, ModalScreen)
+        assert app.query_one(CommandLine).value == "/"
+        await pilot.press("escape")
+        assert not commanding(app)
+        assert app.query_one("#keys").display
+        assert isinstance(app.focused, OutlineList)
+
+    run(notes, scenario)
+
+
+def test_a_find_moves_you_as_you_type_and_esc_goes_back(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("slash")
+        await type_text(pilot, "coast")
+        assert app.current_id == "c3d4"  # there already, before enter
+        assert app.outline.highlighted == app.outline.get_option_index("c3d4")
+        assert hint(app) == "1 of 1"
+        await pilot.press("escape")
+        assert app.current_id == "a1b2"
+
+    run(notes, scenario)
+
+
+def test_a_find_opens_up_what_its_folded_in_and_esc_folds_it_again(
+    notes: Path,
+) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("tab")  # fold a1b2
+        await pilot.press("slash")
+        await type_text(pilot, "march")
+        assert app.current_id == "e5f6"
+        assert app.outline.option_count == 4
+        await pilot.press("escape")
+        assert app.folded == {"a1b2"}
+        assert app.outline.option_count == 2
+
+    run(notes, scenario)
+
+
+def test_a_find_marks_what_it_finds_in_the_outline(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("slash")
+        await type_text(pilot, "march")
+        line = app.outline.get_option("e5f6").prompt
+        assert isinstance(line, Text)
+        # Only in the body, so the line it's on follows the subject.
+        assert line.plain.endswith("⋯ By the end of March.")
+        marked = [line.plain[s.start : s.end] for s in line.spans if s.style == FOUND]
+        assert marked == ["March"]
+        assert "⋯" not in prompt(app, "g7h8")
+
+    run(notes, scenario)
+
+
+def test_down_and_up_step_through_the_matches(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("slash")
+        await type_text(pilot, "o")  # in every item, so the first is the next one
+        assert app.current_id == "c3d4"
+        assert hint(app) == "2 of 4"
+        await pilot.press("down")
+        assert app.current_id == "e5f6"
+        await pilot.press("down", "down")  # round the end
+        assert app.current_id == "a1b2"
+        await pilot.press("up")
+        assert app.current_id == "g7h8"
+        await pilot.press("enter")
+        assert app.current_id == "g7h8"
+        assert isinstance(app.focused, OutlineList)
+
+    run(notes, scenario)
+
+
+def test_n_and_shift_n_find_the_last_words_again(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("n")  # nothing found yet
+        assert app.current_id == "a1b2"
+        await pilot.press("slash")
+        await type_text(pilot, "the")
+        await pilot.press("enter")
+        assert app.current_id == "e5f6"
+        await pilot.press("n")  # round to the top
+        assert app.current_id == "a1b2"
+        await pilot.press("N")
+        assert app.current_id == "e5f6"
+        assert app.found() is not None
+        await pilot.press("escape")  # the marks go, as vim's :noh
+        assert app.found() is None
+
+    run(notes, scenario)
+
+
+def test_slash_enter_finds_the_last_words_again(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("slash")
+        await type_text(pilot, "the")
+        await pilot.press("enter")
+        assert app.current_id == "e5f6"
+        await pilot.press("slash", "enter")
+        assert app.current_id == "a1b2"
+
+    run(notes, scenario)
+
+
+def test_backspace_past_the_start_closes_the_command_line(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("colon", "4")
+        assert app.current_id == "g7h8"
+        await pilot.press("backspace", "backspace")
+        assert commanding(app)
+        await pilot.press("backspace")
+        assert not commanding(app)
+        assert app.current_id == "a1b2"
+
+    run(notes, scenario)
+
+
+def test_n_is_a_find_key_not_a_new_item(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("n")
+        assert not app.editor.adding
+
+    run(notes, scenario)
+
+
+def test_a_replace_marks_what_it_will_change(notes: Path) -> None:
+    async def scenario(app: QQApp, pilot: Pilot[None]) -> None:
+        await pilot.press("slash")
+        await type_text(pilot, "June/July/")
+        assert hint(app) == "enter replaces in 1 item (u undoes it)"
+        assert app.found() is not None
+        assert app.found().ids == {"a1b2"}  # type: ignore[union-attr]
+        assert app.current_id == "a1b2"  # a replace doesn't move you
+        await pilot.press("enter")
+
+    run(notes, scenario)
+    assert on_disk(notes).get("a1b2").subject == "Where should we go in July?"
 
 
 def test_question_mark_shows_every_key(notes: Path) -> None:

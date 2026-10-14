@@ -69,16 +69,17 @@ shift+arrows.
 | `shift+tab` | Fold or unfold everything, in turn: top level only, one level open, all open. |
 | `enter` | New item here, after this one (and everything under it), with a box. It appears in the outline straight away and fills in as you type on the right; `esc` when you're done. |
 | `alt+enter` | New item above. (`shift+enter` too, where the terminal sends it as its own key or as ESC + enter.) |
-| `n` | New top-level item at the bottom. When you're done you're back on the item you were on. |
+| `b` | New top-level item at the bottom. When you're done you're back on the item you were on. |
 | `m` | Pick the item up (with everything under it): `↑` `↓` carry it through the outline as it's shown, into and out of branches, and `←` `→` change its level. `m` or `enter` drops it; `esc` or `u` puts it back. |
 | `shift+↑` / `shift+↓` | Move the item one row without picking it up. |
 | `shift+←` / `shift+→` | Out / in a level. |
 | `ctrl+n` | Edit the selected item, like `→`. |
-| `space` | Tick or untick. A plain item gets a box when you tick it. Ticks cascade: down to the boxes under it, and up, so a parent is ticked once all its boxes are and shows `[-]` while only some are. A plain item in between stops the cascade. |
+| `space` | Tick or untick (clicking the box does it too). A plain item gets a box when you tick it. Ticks cascade: down to the boxes under it, and up, so a parent is ticked once all its boxes are and shows `[-]` while only some are. A plain item in between stops the cascade. |
 | `t` | Give the item a box, or take it away. |
 | `x` | Delete; asks first if there's more to it or items under it. |
 | `u` | Undo the last change: adding, deleting, moving, ticking or editing. A run of moves of one item is one change, so `u` puts it back where it started. |
-| `ctrl+p` / `/` / `:` | The palette (see below), with `/` or `:` already typed for those two keys. |
+| `/` / `:` / `ctrl+p` | The command line (see below), with `/` or `:` already typed for those two keys. |
+| `n` / `N` | The next or previous item with the words last found, round the end, as in vim. `esc` takes the marks away. |
 | `o` | Open the first file reference in the item, like `src/app.py:30`, at that line in your editor. Clicking an underlined reference in the outline does the same. The editor is `$QQ_EDITOR`, else `$VISUAL`, else `$EDITOR`, else VS Code (`code -g`) if it's installed, else vi. VS Code, Cursor, Zed and Sublime open alongside; a terminal editor takes over until you quit it. |
 | `?` | Show every key. |
 
@@ -87,10 +88,17 @@ shift+arrows.
 | typing | The first line, in bold, is what the outline shows; `enter` starts the next line, `tab` indents (for code). Lines are numbered, and markdown is coloured as you type, including the code in a fenced block by its language. It saves as you type. A blank first line isn't saved. |
 | `esc` / `ctrl+n` | Back to the outline. For a new item, that's when it's added; leave it empty to add nothing. |
 | `ctrl+o` | Open the file reference on the cursor's line. |
-| `ctrl+p` | The palette, working on this item (see below). |
+| `ctrl+p` | The command line, working on this item (see below). |
 
-**The palette** (`ctrl+p`, like VS Code's quick open with vim's command
-line in it) works on whatever pane you opened it from:
+**The command line** (`/`, `:` or `ctrl+p`) is vim's: it opens on the
+bottom line, in place of the key bar, and nothing opens over the panes. As
+you type, it takes you to the first match after where you are, opening up
+anything folded around it, and marks every match in the outline; when the
+words are only further down an item, that line follows its subject. `↓` `↑`
+(or `tab` `shift+tab`) go to the next and previous match, and the right of the
+line says which one you're on, like `2 of 5`. `enter` stays there, and `esc`
+(or backspacing past the start) goes back to where you were. It works on
+whatever pane you opened it from:
 
 | Type | In the outline | In the editor |
 | --- | --- | --- |
@@ -104,8 +112,9 @@ line in it) works on whatever pane you opened it from:
 A replace needs the closing slash, so a search like `/src/app.py` finds the
 path as it is. Without flags it replaces the first match on each line; add
 `g` for every match and `i` to ignore case (`/old/new/gi`). The text is
-literal, not a pattern. The palette lists what will change before `enter`,
-and `u` undoes it. Plain words with no `/` find items, wherever you are.
+literal, not a pattern. Before `enter` it marks what will change and says
+how many items, and `u` undoes it. Plain words with no `/` find items,
+wherever you are, and `/` on its own finds the last words again.
 
 `ctrl+d` twice quits from anywhere, as in Claude Code: the first press warns, and a second within two seconds quits. (`ctrl+q` quits straight away.)
 

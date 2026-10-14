@@ -91,39 +91,31 @@ ChoiceModal, HelpModal {
     color: $text-muted;
 }
 
-PaletteModal {
-    align: center top;
-    background: $background 50%;
-}
+/* The command line takes the key bar's place while it's open, as in vim. */
 
-.palette {
-    width: 80;
-    max-width: 95%;
-    height: auto;
-    max-height: 70%;
-    margin-top: 2;
-    border: round $accent;
-    background: $surface;
-    padding: 0 1;
-}
-
-#palette-input {
-    border: none;
+#command {
+    dock: bottom;
     height: 1;
-    padding: 0;
-    background: transparent;
+    display: none;
+    background: $panel;
 }
 
-#palette-hint {
-    color: $text-muted;
-    height: auto;
-}
-
-#palette-results {
-    height: auto;
-    max-height: 20;
+#command-line {
+    width: 1fr;
+    height: 1;
     border: none;
+    padding: 0 1;
     background: transparent;
+}
+
+#command-hint {
+    width: auto;
+    max-width: 60%;
+    height: 1;
+    padding: 0 1;
+    color: $text-muted;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
 .help {

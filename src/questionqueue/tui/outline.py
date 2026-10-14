@@ -13,7 +13,7 @@ from textual.widgets import OptionList
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
 from ..core import Document
-from .render import MUTED, draw_line, gutter_width, outline
+from .render import MUTED, Found, draw_line, gutter_width, outline
 
 # The option for an item still being written, before it's in the document.
 NEW_ID = "--new--"
@@ -25,7 +25,7 @@ This side is the outline: you move around it and arrange it, and keys
 are commands. The other side is where you write; → goes there,
 and esc comes back.
 
-enter adds an item where you are, n adds one at the bottom, m picks one
+enter adds an item where you are, b adds one at the bottom, m picks one
 up to move it, and u undoes. tab folds, and shift+tab folds everything."""
 
 
@@ -47,7 +47,7 @@ class OutlineList(OptionList):
         # alt+enter reaches us everywhere (see keys.py); shift+enter only
         # where the terminal reports it as its own key.
         Binding("alt+enter,shift+enter", "request('new_above')", show=False),
-        Binding("n", "request('new_at_bottom')", show=False),
+        Binding("b", "request('new_at_bottom')", show=False),
         Binding("m", "request('move')", show=False),
         Binding("space", "request('tick')", show=False),
         Binding("t", "request('toggle_box')", show=False),
@@ -55,6 +55,9 @@ class OutlineList(OptionList):
         Binding("u", "request('undo')", show=False),
         Binding("slash", "request('find')", show=False),
         Binding("colon", "request('goto')", show=False),
+        # As in vim: the next and previous match of the last find.
+        Binding("n", "request('next_match')", show=False),
+        Binding("N", "request('previous_match')", show=False),
         Binding("question_mark", "request('help')", show=False),
         Binding("o", "request('open_ref')", show=False),
         Binding("escape", "request('escape')", show=False),
@@ -66,6 +69,13 @@ class OutlineList(OptionList):
         def __init__(self, action: str) -> None:
             super().__init__()
             self.action = action
+
+    class TickClicked(Message):
+        """An item's box was clicked."""
+
+        def __init__(self, item_id: str) -> None:
+            super().__init__()
+            self.item_id = item_id
 
     class OpenRef(Message):
         """A file:line in the outline was clicked."""
@@ -93,9 +103,15 @@ class OutlineList(OptionList):
 
     async def _on_click(self, event: events.Click) -> None:
         # OptionList selects the row as well, after this.
-        ref = event.style.meta.get("ref")
+        meta = event.style.meta
+        ref = meta.get("ref")
         if ref is not None:
             self.post_message(self.OpenRef(ref))
+        index = meta.get("option")
+        if meta.get("box") and index is not None:
+            item_id = self.get_option_at_index(index).id
+            if item_id is not None:
+                self.post_message(self.TickClicked(item_id))
 
     def show_doc(
         self,
@@ -104,10 +120,14 @@ class OutlineList(OptionList):
         *,
         folded: Collection[str] = (),
         new_row: tuple[int, int] | None = None,
+        found: Found | None = None,
     ) -> None:
         """Draw the items showing. `new_row` is (position, depth) for a blank
-        row where an item being written will go; it's selected while it's there."""
-        options = [Option(text, id=item_id) for text, item_id in outline(doc, folded)]
+        row where an item being written will go; it's selected while it's there.
+        What `found` finds is marked."""
+        options = [
+            Option(text, id=item_id) for text, item_id in outline(doc, folded, found)
+        ]
         if new_row is not None:
             position, depth = new_row
             # New items get a box.
